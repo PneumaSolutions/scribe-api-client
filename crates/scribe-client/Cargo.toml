@@ -6,6 +6,9 @@ license.workspace = true
 repository.workspace = true
 description = "Rust client for the Scribe document conversion API"
 
+[lints]
+workspace = true
+
 [dependencies]
 base64 = "0.22"
 rand = "0.8"

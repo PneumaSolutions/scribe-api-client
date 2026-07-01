@@ -2,7 +2,7 @@
 //! Authorization Code + PKCE authentication, and document
 //! create/list-outputs/download operations.
 //!
-//! This crate has no PyO3 dependency; see `scribe-client-py` in the same
+//! This crate has no `PyO3` dependency; see `scribe-client-py` in the same
 //! workspace for Python bindings.
 
 mod auth;

@@ -17,6 +17,7 @@ pub enum OutputFormat {
 }
 
 impl OutputFormat {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             OutputFormat::Html => "html",
@@ -32,6 +33,7 @@ impl OutputFormat {
         }
     }
 
+    #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         Some(match s {
             "html" => OutputFormat::Html,
@@ -61,10 +63,12 @@ pub enum Stage {
 }
 
 impl Stage {
+    #[must_use]
     pub fn is_complete(&self) -> bool {
         matches!(self, Stage::Complete)
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             Stage::Queue => "queue",

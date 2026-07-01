@@ -1,8 +1,10 @@
 use scribe_client::{DocumentSource, OutputFormat, ScribeClient, ScribeError, TokenSet};
 use time::OffsetDateTime;
 use url::Url;
-use wiremock::matchers::{header, method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::{
+    matchers::{header, method, path},
+    Mock, MockServer, ResponseTemplate,
+};
 
 fn valid_tokens() -> TokenSet {
     TokenSet {
@@ -12,7 +14,7 @@ fn valid_tokens() -> TokenSet {
     }
 }
 
-async fn client_for(server: &MockServer, tokens: TokenSet) -> ScribeClient {
+fn client_for(server: &MockServer, tokens: TokenSet) -> ScribeClient {
     ScribeClient::new(
         reqwest::Client::new(),
         Url::parse(&server.uri()).unwrap(),
@@ -34,7 +36,7 @@ async fn create_document_from_file_returns_document_id() {
         .mount(&server)
         .await;
 
-    let client = client_for(&server, valid_tokens()).await;
+    let client = client_for(&server, valid_tokens());
     let doc = client
         .create_document(DocumentSource::File {
             file_name: "report.docx".into(),
@@ -73,7 +75,7 @@ async fn list_outputs_parses_in_progress_and_complete_rows() {
         .mount(&server)
         .await;
 
-    let client = client_for(&server, valid_tokens()).await;
+    let client = client_for(&server, valid_tokens());
     let outputs = client.list_outputs("doc-1").await.unwrap();
 
     assert_eq!(outputs.len(), 2);
@@ -93,7 +95,7 @@ async fn download_output_returns_bytes_when_complete() {
         .mount(&server)
         .await;
 
-    let client = client_for(&server, valid_tokens()).await;
+    let client = client_for(&server, valid_tokens());
     let bytes = client
         .download_output("doc-1", OutputFormat::Pdf)
         .await
@@ -114,7 +116,7 @@ async fn download_output_maps_conversion_not_complete() {
         .mount(&server)
         .await;
 
-    let client = client_for(&server, valid_tokens()).await;
+    let client = client_for(&server, valid_tokens());
     let result = client.download_output("doc-1", OutputFormat::Pdf).await;
 
     assert!(matches!(result, Err(ScribeError::ConversionNotComplete)));
@@ -158,7 +160,7 @@ async fn a_401_triggers_refresh_and_retries_once() {
         expires_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
     };
 
-    let client = client_for(&server, stale_tokens).await;
+    let client = client_for(&server, stale_tokens);
     let outputs = client.list_outputs("doc-1").await.unwrap();
 
     assert!(outputs.is_empty());

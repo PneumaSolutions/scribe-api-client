@@ -20,6 +20,7 @@ pub struct PkceChallenge {
 
 impl PkceChallenge {
     /// Generates a new random verifier and its S256 challenge.
+    #[must_use]
     pub fn generate() -> Self {
         // RFC 7636 section 4.1: verifier is 43-128 chars from [A-Z a-z 0-9 - . _ ~].
         // 32 random bytes, base64url-no-pad-encoded, is 43 chars and pulls
@@ -41,10 +42,12 @@ impl PkceChallenge {
         URL_SAFE_NO_PAD.encode(hasher.finalize())
     }
 
+    #[must_use]
     pub fn verifier(&self) -> &str {
         &self.verifier
     }
 
+    #[must_use]
     pub fn challenge(&self) -> &str {
         &self.challenge
     }
@@ -60,12 +63,14 @@ pub struct TokenSet {
 
 impl TokenSet {
     /// True if this token is missing or will expire within `skew`.
+    #[must_use]
     pub fn needs_refresh(&self, skew: Duration) -> bool {
         match self.expires_at {
             None => false,
             Some(expires_at) => {
                 expires_at
-                    <= OffsetDateTime::now_utc() + time::Duration::seconds(skew.as_secs() as i64)
+                    <= OffsetDateTime::now_utc()
+                        + time::Duration::seconds(skew.as_secs().cast_signed())
             }
         }
     }
@@ -119,6 +124,7 @@ impl AuthClient {
 
     /// Builds the URL the user's browser should be sent to. `redirect_uri`
     /// must match one registered for `client_id` server-side.
+    #[must_use]
     pub fn authorization_url(&self, redirect_uri: &str, pkce: &PkceChallenge) -> Url {
         let mut url = self.base_url.clone();
         url.set_path("/oauth/authorize");
@@ -136,6 +142,12 @@ impl AuthClient {
     /// the browser flow at [`AuthClient::authorization_url`]) for a token
     /// set. `verifier` must be the same [`PkceChallenge`] used to build
     /// that URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::InvalidGrant`] if the code or verifier is
+    /// wrong or expired, or [`ScribeError::Http`]/[`ScribeError::Api`] on
+    /// other request failures.
     pub async fn exchange_code(
         &self,
         redirect_uri: &str,
@@ -157,6 +169,12 @@ impl AuthClient {
     }
 
     /// Exchanges a refresh token for a new token set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::InvalidGrant`] if the refresh token is wrong,
+    /// expired, or revoked, or [`ScribeError::Http`]/[`ScribeError::Api`] on
+    /// other request failures.
     pub async fn refresh(&self, refresh_token: &str) -> Result<TokenSet, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path("/oauth/token");

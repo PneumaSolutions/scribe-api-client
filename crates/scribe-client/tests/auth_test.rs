@@ -1,7 +1,9 @@
 use scribe_client::{AuthClient, PkceChallenge, ScribeError};
 use url::Url;
-use wiremock::matchers::{body_string_contains, method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::{
+    matchers::{body_string_contains, method, path},
+    Mock, MockServer, ResponseTemplate,
+};
 
 fn auth_client(base_url: &str) -> AuthClient {
     AuthClient::new(

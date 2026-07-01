@@ -1,14 +1,15 @@
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use reqwest::multipart;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 use url::Url;
 
-use crate::auth::{AuthClient, TokenSet};
-use crate::error::ScribeError;
-use crate::model::{CreatedDocument, Output, OutputFormat, OutputListResponse};
+use crate::{
+    auth::{AuthClient, TokenSet},
+    error::ScribeError,
+    model::{CreatedDocument, Output, OutputFormat, OutputListResponse},
+};
 
 /// How early to proactively refresh a token before it actually expires.
 const REFRESH_SKEW: Duration = Duration::from_secs(30);
@@ -82,6 +83,12 @@ impl ScribeClient {
         Ok(tokens.access_token.clone())
     }
 
+    /// Creates a document from `source`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] if the request
+    /// fails or the server rejects it.
     pub async fn create_document(
         &self,
         source: DocumentSource,
@@ -108,6 +115,13 @@ impl ScribeClient {
         .await
     }
 
+    /// Lists every output (in-progress and completed) for a document.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
+    /// document doesn't exist or isn't owned by the caller, or
+    /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures.
     pub async fn list_outputs(&self, document_id: &str) -> Result<Vec<Output>, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path(&format!("/api/documents/{document_id}/outputs"));
@@ -119,9 +133,14 @@ impl ScribeClient {
         Ok(response.outputs)
     }
 
-    /// Downloads the bytes of a completed output. Returns
-    /// [`ScribeError::ConversionNotComplete`] if that format hasn't
-    /// finished converting yet.
+    /// Downloads the bytes of a completed output.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::ConversionNotComplete`] if that format hasn't
+    /// finished converting yet, [`ScribeError::NotFound`]/[`ScribeError::Forbidden`]
+    /// if the document doesn't exist or isn't owned by the caller, or
+    /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures.
     pub async fn download_output(
         &self,
         document_id: &str,

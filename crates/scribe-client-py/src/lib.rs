@@ -1,4 +1,4 @@
-//! PyO3 bindings for `scribe-client`.
+//! `PyO3` bindings for `scribe-client`.
 //!
 //! The Python API is synchronous/blocking by design: each method runs the
 //! underlying async call on a shared, lazily-started `tokio::Runtime` via
@@ -7,13 +7,15 @@
 
 use std::sync::OnceLock;
 
-use pyo3::create_exception;
-use pyo3::exceptions::{PyException, PyValueError};
-use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::{
+    create_exception,
+    exceptions::{PyException, PyValueError},
+    prelude::*,
+    types::PyBytes,
+};
 use url::Url;
 
-use ::scribe_client::{
+use scribe_client_core::{
     AuthClient, DocumentSource, Output, OutputFormat, PkceChallenge, ScribeClient, ScribeError,
     TokenSet,
 };
@@ -103,6 +105,9 @@ impl PyTokenSet {
             inner: TokenSet {
                 access_token,
                 refresh_token,
+                // Python's time.time() convention is float seconds since the
+                // epoch; sub-second precision isn't meaningful for token expiry.
+                #[allow(clippy::cast_possible_truncation)]
                 expires_at: expires_at.map(|secs| {
                     time::OffsetDateTime::from_unix_timestamp(secs as i64)
                         .unwrap_or(time::OffsetDateTime::UNIX_EPOCH)
@@ -124,6 +129,7 @@ impl PyTokenSet {
     /// Unix timestamp (seconds), or `None` if the server didn't report an
     /// expiry.
     #[getter]
+    #[allow(clippy::cast_precision_loss)]
     fn expires_at(&self) -> Option<f64> {
         self.inner.expires_at.map(|t| t.unix_timestamp() as f64)
     }

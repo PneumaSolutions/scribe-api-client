@@ -10,8 +10,11 @@ description = "Python bindings (PyO3) for scribe-client"
 name = "scribe_client"
 crate-type = ["cdylib"]
 
+[lints]
+workspace = true
+
 [dependencies]
-scribe-client = { path = "../scribe-client" }
+scribe_client_core = { package = "scribe-client", path = "../scribe-client" }
 pyo3 = { version = "0.24", features = ["extension-module", "abi3-py39"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "native-tls"] }
 time = "0.3"
