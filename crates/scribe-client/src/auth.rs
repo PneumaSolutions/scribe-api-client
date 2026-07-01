@@ -10,7 +10,7 @@ use url::Url;
 use crate::error::ScribeError;
 
 /// A generated PKCE (RFC 7636) verifier/challenge pair. Always uses the
-/// `S256` challenge method — there's no reason for a client we control to
+/// `S256` challenge method; there's no reason for a client we control to
 /// use `plain`, even though the server supports it.
 #[derive(Debug, Clone)]
 pub struct PkceChallenge {
@@ -21,7 +21,7 @@ pub struct PkceChallenge {
 impl PkceChallenge {
     /// Generates a new random verifier and its S256 challenge.
     pub fn generate() -> Self {
-        // RFC 7636 §4.1: verifier is 43-128 chars from [A-Z a-z 0-9 - . _ ~].
+        // RFC 7636 section 4.1: verifier is 43-128 chars from [A-Z a-z 0-9 - . _ ~].
         // 32 random bytes, base64url-no-pad-encoded, is 43 chars and pulls
         // only from that alphabet.
         let mut bytes = [0u8; 32];
@@ -98,8 +98,8 @@ impl From<TokenResponse> for TokenSet {
 }
 
 /// Drives the OAuth 2.0 Authorization Code + PKCE flow against a Scribe
-/// server. This type does **not** open a browser or run a redirect
-/// listener — the embedding application is responsible for presenting
+/// server. This type does not open a browser or run a redirect listener;
+/// the embedding application is responsible for presenting
 /// [`AuthClient::authorization_url`] to the user and obtaining the
 /// resulting `code` however fits its own UI.
 pub struct AuthClient {

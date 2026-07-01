@@ -94,8 +94,8 @@ struct PyTokenSet {
 
 #[pymethods]
 impl PyTokenSet {
-    /// Constructs a token set directly — useful for tests, or for
-    /// restoring a session previously persisted by the caller.
+    /// Constructs a token set directly, useful for tests or for restoring
+    /// a session previously persisted by the caller.
     #[new]
     #[pyo3(signature = (access_token, refresh_token=None, expires_at=None))]
     fn new(access_token: String, refresh_token: Option<String>, expires_at: Option<f64>) -> Self {
@@ -129,8 +129,8 @@ impl PyTokenSet {
     }
 }
 
-/// Drives the OAuth 2.0 Authorization Code + PKCE flow. Does **not** open a
-/// browser or run a redirect listener — present `authorization_url()` to
+/// Drives the OAuth 2.0 Authorization Code + PKCE flow. Does not open a
+/// browser or run a redirect listener; present `authorization_url()` to
 /// the user however fits your application and pass the resulting `code`
 /// to `exchange_code()`.
 #[pyclass(name = "AuthClient")]

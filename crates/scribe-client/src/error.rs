@@ -16,8 +16,8 @@ pub enum ScribeError {
     #[error("{status}: {error}")]
     Api { status: u16, error: String },
 
-    /// `POST /oauth/token` specifically returned `400 invalid_grant` — the
-    /// authorization code, refresh token, or PKCE verifier didn't check out.
+    /// `POST /oauth/token` specifically returned `400 invalid_grant`, meaning
+    /// the authorization code, refresh token, or PKCE verifier didn't check out.
     #[error("invalid_grant: {0}")]
     InvalidGrant(String),
 

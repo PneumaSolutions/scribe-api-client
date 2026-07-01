@@ -124,7 +124,8 @@ async fn download_output_maps_conversion_not_complete() {
 async fn a_401_triggers_refresh_and_retries_once() {
     let server = MockServer::start().await;
 
-    // The initial (stale) token gets a 401...
+    // The initial (stale) token gets a 401, which triggers a refresh, and
+    // the retry with the new token succeeds.
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs"))
         .and(header("authorization", "Bearer at-stale"))
@@ -132,7 +133,6 @@ async fn a_401_triggers_refresh_and_retries_once() {
         .mount(&server)
         .await;
 
-    // ...which triggers a refresh...
     Mock::given(method("POST"))
         .and(path("/oauth/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -143,7 +143,6 @@ async fn a_401_triggers_refresh_and_retries_once() {
         .mount(&server)
         .await;
 
-    // ...and the retry with the new token succeeds.
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs"))
         .and(header("authorization", "Bearer at-fresh"))
