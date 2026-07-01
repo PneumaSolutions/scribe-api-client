@@ -1,0 +1,19 @@
+[package]
+name = "scribe-client-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Python bindings (PyO3) for scribe-client"
+
+[lib]
+name = "scribe_client"
+crate-type = ["cdylib"]
+
+[dependencies]
+scribe-client = { path = "../scribe-client" }
+pyo3 = { version = "0.24", features = ["extension-module", "abi3-py39"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "native-tls"] }
+time = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+url = "2"
