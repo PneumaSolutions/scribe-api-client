@@ -13,4 +13,7 @@ mod model;
 pub use auth::{AuthClient, PkceChallenge, TokenSet};
 pub use client::{DocumentSource, ScribeClient};
 pub use error::ScribeError;
-pub use model::{CreatedDocument, Output, OutputFormat, Stage};
+pub use model::{
+    BrailleTable, CreatedDocument, Dialect, Language, Output, OutputFormat, Settings,
+    SettingsUpdate, Stage, Voice,
+};

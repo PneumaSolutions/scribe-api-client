@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use reqwest::multipart;
 use serde::Deserialize;
@@ -8,7 +8,11 @@ use url::Url;
 use crate::{
     auth::{AuthClient, TokenSet},
     error::ScribeError,
-    model::{CreatedDocument, Output, OutputFormat, OutputListResponse},
+    model::{
+        BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect, DialectsResponse,
+        Language, LanguagesResponse, Output, OutputFormat, OutputListResponse, Settings,
+        SettingsUpdate, Voice, VoicesResponse,
+    },
 };
 
 /// How early to proactively refresh a token before it actually expires.
@@ -163,6 +167,133 @@ impl ScribeClient {
             .await?;
 
         Ok(response.bytes().await?.to_vec())
+    }
+
+    /// Fetches a document's current conversion settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
+    /// document doesn't exist or isn't owned by the caller, or
+    /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures.
+    pub async fn get_settings(&self, document_id: &str) -> Result<Settings, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path(&format!("/api/documents/{document_id}/settings"));
+
+        self.with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await
+    }
+
+    /// Applies a partial update to a document's conversion settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
+    /// document doesn't exist or isn't owned by the caller, or
+    /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures
+    /// (including validation errors on the settings themselves).
+    pub async fn update_settings(
+        &self,
+        document_id: &str,
+        update: &SettingsUpdate,
+    ) -> Result<Settings, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path(&format!("/api/documents/{document_id}/settings"));
+        let body = serde_json::json!({ "settings": update });
+
+        self.with_auth_retry(|token| {
+            self.http.patch(url.clone()).bearer_auth(token).json(&body)
+        })
+        .await
+    }
+
+    /// Starts converting a document to `format`, using its current
+    /// settings. Idempotent: calling this again for a format that's already
+    /// converting or complete returns that existing output.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
+    /// document doesn't exist or isn't owned by the caller, or
+    /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures
+    /// (including an unsupported `format`).
+    pub async fn create_output(
+        &self,
+        document_id: &str,
+        format: OutputFormat,
+    ) -> Result<Output, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path(&format!("/api/documents/{document_id}/outputs"));
+        let body = serde_json::json!({ "format": format.as_str() });
+
+        self.with_auth_retry(|token| {
+            self.http.post(url.clone()).bearer_auth(token).json(&body)
+        })
+        .await
+    }
+
+    /// Lists every language available for TTS narration.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn languages(&self) -> Result<Vec<Language>, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/settings/languages");
+
+        let response: LanguagesResponse = self
+            .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await?;
+
+        Ok(response.languages)
+    }
+
+    /// Lists every dialect available for TTS narration, keyed by language code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn dialects(&self) -> Result<HashMap<String, Vec<Dialect>>, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/settings/dialects");
+
+        let response: DialectsResponse = self
+            .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await?;
+
+        Ok(response.dialects)
+    }
+
+    /// Lists every Braille translation table available for `brf` output.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn braille_tables(&self) -> Result<Vec<BrailleTable>, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/settings/braille_tables");
+
+        let response: BrailleTablesResponse = self
+            .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await?;
+
+        Ok(response.braille_tables)
+    }
+
+    /// Lists every TTS voice available, keyed by dialect locale.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn voices(&self) -> Result<HashMap<String, Vec<Voice>>, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/settings/voices");
+
+        let response: VoicesResponse = self
+            .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await?;
+
+        Ok(response.voices)
     }
 
     /// Sends a request built by `build`, retrying once with a

@@ -5,19 +5,19 @@
 //! `Python::allow_threads` + `Runtime::block_on`, so the GIL is released
 //! while the request is in flight but callers never see a coroutine.
 
-use std::sync::OnceLock;
+use std::{collections::HashMap, sync::OnceLock};
 
 use pyo3::{
     create_exception,
     exceptions::{PyException, PyValueError},
     prelude::*,
-    types::PyBytes,
+    types::{PyBytes, PyDict},
 };
 use url::Url;
 
 use scribe_client_core::{
     AuthClient, DocumentSource, Output, OutputFormat, PkceChallenge, ScribeClient, ScribeError,
-    TokenSet,
+    Settings, SettingsUpdate, TokenSet,
 };
 
 create_exception!(scribe_client, ScribeApiError, PyException);
@@ -226,6 +226,92 @@ impl PyOutput {
     }
 }
 
+/// A document's current conversion settings.
+#[pyclass(name = "Settings")]
+struct PySettings {
+    inner: Settings,
+}
+
+#[pymethods]
+impl PySettings {
+    #[getter]
+    fn language(&self) -> Option<&str> {
+        self.inner.language.as_deref()
+    }
+
+    #[getter]
+    fn dialects<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        pythonize::pythonize(py, &self.inner.dialects)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    #[getter]
+    fn voices<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        pythonize::pythonize(py, &self.inner.voices)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    #[getter]
+    fn tts_gender(&self) -> Option<&str> {
+        self.inner.tts_gender.as_deref()
+    }
+
+    #[getter]
+    fn tts_rate(&self) -> f64 {
+        self.inner.tts_rate
+    }
+
+    #[getter]
+    fn braille_translation_table(&self) -> &str {
+        &self.inner.braille_translation_table
+    }
+
+    #[getter]
+    fn braille_cells_per_line(&self) -> i64 {
+        self.inner.braille_cells_per_line
+    }
+
+    #[getter]
+    fn braille_split_into_pages(&self) -> bool {
+        self.inner.braille_split_into_pages
+    }
+
+    #[getter]
+    fn braille_lines_per_page(&self) -> i64 {
+        self.inner.braille_lines_per_page
+    }
+
+    #[getter]
+    fn large_print(&self) -> bool {
+        self.inner.large_print
+    }
+
+    #[getter]
+    fn add_image_descriptions(&self) -> bool {
+        self.inner.add_image_descriptions
+    }
+
+    #[getter]
+    fn math(&self) -> bool {
+        self.inner.math
+    }
+
+    #[getter]
+    fn notify_when_complete(&self) -> bool {
+        self.inner.notify_when_complete
+    }
+}
+
+/// `(name, voice_short_name, has_sample)` triples, keyed by dialect locale.
+type VoicesByDialect = HashMap<String, Vec<(String, String, bool)>>;
+
+fn dict_to_settings_update(dict: &Bound<'_, PyDict>) -> PyResult<SettingsUpdate> {
+    let value: serde_json::Value =
+        pythonize::depythonize(dict).map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    serde_json::from_value(value).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// A client for the document endpoints (`/api/documents*`). Holds a
 /// [`PyTokenSet`] and refreshes it automatically as needed.
 #[pyclass(name = "ScribeClient")]
@@ -303,6 +389,77 @@ impl PyScribeClient {
 
         Ok(PyBytes::new(py, &bytes))
     }
+
+    /// Fetches a document's current conversion settings.
+    fn get_settings(&self, py: Python<'_>, document_id: &str) -> PyResult<PySettings> {
+        py.allow_threads(|| runtime().block_on(self.inner.get_settings(document_id)))
+            .map(|inner| PySettings { inner })
+            .map_err(to_py_err)
+    }
+
+    /// Applies a partial update to a document's conversion settings. Only
+    /// the keys present in `settings` are changed.
+    fn update_settings(
+        &self,
+        py: Python<'_>,
+        document_id: &str,
+        settings: &Bound<'_, PyDict>,
+    ) -> PyResult<PySettings> {
+        let update = dict_to_settings_update(settings)?;
+
+        py.allow_threads(|| runtime().block_on(self.inner.update_settings(document_id, &update)))
+            .map(|inner| PySettings { inner })
+            .map_err(to_py_err)
+    }
+
+    /// Starts converting a document to `format`, using its current settings.
+    fn create_output(&self, py: Python<'_>, document_id: &str, format: &str) -> PyResult<PyOutput> {
+        let format = parse_format(format)?;
+
+        py.allow_threads(|| runtime().block_on(self.inner.create_output(document_id, format)))
+            .map(|inner| PyOutput { inner })
+            .map_err(to_py_err)
+    }
+
+    /// Lists every language available for TTS narration, as `(name, code)`
+    /// pairs.
+    fn languages(&self, py: Python<'_>) -> PyResult<Vec<(String, String)>> {
+        py.allow_threads(|| runtime().block_on(self.inner.languages()))
+            .map(|langs| langs.into_iter().map(|l| (l.0, l.1)).collect())
+            .map_err(to_py_err)
+    }
+
+    /// Lists every dialect available for TTS narration, keyed by language
+    /// code, each as a `(name, locale)` pair.
+    fn dialects(&self, py: Python<'_>) -> PyResult<HashMap<String, Vec<(String, String)>>> {
+        py.allow_threads(|| runtime().block_on(self.inner.dialects()))
+            .map(|map| {
+                map.into_iter()
+                    .map(|(k, v)| (k, v.into_iter().map(|d| (d.0, d.1)).collect()))
+                    .collect()
+            })
+            .map_err(to_py_err)
+    }
+
+    /// Lists every Braille translation table available for `brf` output, as
+    /// `(name, table_id)` pairs.
+    fn braille_tables(&self, py: Python<'_>) -> PyResult<Vec<(String, String)>> {
+        py.allow_threads(|| runtime().block_on(self.inner.braille_tables()))
+            .map(|tables| tables.into_iter().map(|t| (t.0, t.1)).collect())
+            .map_err(to_py_err)
+    }
+
+    /// Lists every TTS voice available, keyed by dialect locale, each as a
+    /// `(name, voice_short_name, has_sample)` triple.
+    fn voices(&self, py: Python<'_>) -> PyResult<VoicesByDialect> {
+        py.allow_threads(|| runtime().block_on(self.inner.voices()))
+            .map(|map| {
+                map.into_iter()
+                    .map(|(k, v)| (k, v.into_iter().map(|voice| (voice.0, voice.1, voice.2)).collect()))
+                    .collect()
+            })
+            .map_err(to_py_err)
+    }
 }
 
 #[pymodule]
@@ -311,6 +468,7 @@ fn scribe_client(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyTokenSet>()?;
     m.add_class::<PyAuthClient>()?;
     m.add_class::<PyOutput>()?;
+    m.add_class::<PySettings>()?;
     m.add_class::<PyScribeClient>()?;
 
     m.add("ScribeApiError", py.get_type::<ScribeApiError>())?;

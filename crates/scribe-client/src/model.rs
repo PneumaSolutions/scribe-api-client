@@ -1,4 +1,6 @@
-use serde::Deserialize;
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
 
 /// A document conversion output format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
@@ -99,6 +101,96 @@ pub struct CreatedDocument {
 #[derive(Debug, Deserialize)]
 pub(crate) struct OutputListResponse {
     pub outputs: Vec<Output>,
+}
+
+/// A document's current conversion settings
+/// (`GET`/`PATCH /api/documents/:id/settings`).
+#[allow(clippy::struct_excessive_bools)] // mirrors the server's flat settings shape
+#[derive(Debug, Clone, Deserialize)]
+pub struct Settings {
+    pub language: Option<String>,
+    pub dialects: serde_json::Value,
+    pub voices: serde_json::Value,
+    pub tts_gender: Option<String>,
+    pub tts_rate: f64,
+    pub braille_translation_table: String,
+    pub braille_cells_per_line: i64,
+    pub braille_split_into_pages: bool,
+    pub braille_lines_per_page: i64,
+    pub large_print: bool,
+    pub add_image_descriptions: bool,
+    pub math: bool,
+    pub notify_when_complete: bool,
+}
+
+/// A partial update to a document's conversion settings
+/// (`PATCH /api/documents/:id/settings`). Only the fields set to `Some`
+/// are sent, so unset fields are left unchanged server-side.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SettingsUpdate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dialects: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voices: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tts_gender: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tts_rate: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub braille_translation_table: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub braille_cells_per_line: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub braille_split_into_pages: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub braille_lines_per_page: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub large_print: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub add_image_descriptions: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub math: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notify_when_complete: Option<bool>,
+}
+
+/// A `(display_name, language_code)` pair from `GET /api/settings/languages`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Language(pub String, pub String);
+
+/// A `(display_name, locale)` pair from `GET /api/settings/dialects`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Dialect(pub String, pub String);
+
+/// A `(display_name, table_id)` pair from `GET /api/settings/braille_tables`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BrailleTable(pub String, pub String);
+
+/// A `(display_name, voice_short_name, has_sample)` triple from
+/// `GET /api/settings/voices`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Voice(pub String, pub String, pub bool);
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct LanguagesResponse {
+    pub languages: Vec<Language>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct DialectsResponse {
+    pub dialects: HashMap<String, Vec<Dialect>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct BrailleTablesResponse {
+    pub braille_tables: Vec<BrailleTable>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct VoicesResponse {
+    pub voices: HashMap<String, Vec<Voice>>,
 }
 
 #[cfg(test)]

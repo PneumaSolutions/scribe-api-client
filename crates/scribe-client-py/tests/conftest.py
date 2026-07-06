@@ -43,6 +43,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         self._dispatch("POST")
 
+    def do_PATCH(self):
+        self._dispatch("PATCH")
+
 
 class MockServer:
     def __init__(self):
