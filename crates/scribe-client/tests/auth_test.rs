@@ -77,6 +77,76 @@ async fn exchange_code_maps_invalid_grant() {
 }
 
 #[tokio::test]
+async fn exchange_code_maps_unrecognized_error_to_api_variant() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/oauth/token"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error": "unsupported_grant_type"
+        })))
+        .mount(&server)
+        .await;
+
+    let client = auth_client(&server.uri());
+    let result = client
+        .exchange_code("myapp://callback", "auth-code", "the-verifier")
+        .await;
+
+    match result {
+        Err(ScribeError::Api { status, error }) => {
+            assert_eq!(status, 400);
+            assert_eq!(error, "unsupported_grant_type");
+        }
+        other => panic!("expected Api error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn exchange_code_maps_non_json_error_body_to_api_variant() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/oauth/token"))
+        .respond_with(ResponseTemplate::new(502).set_body_string("upstream timeout"))
+        .mount(&server)
+        .await;
+
+    let client = auth_client(&server.uri());
+    let result = client
+        .exchange_code("myapp://callback", "auth-code", "the-verifier")
+        .await;
+
+    match result {
+        Err(ScribeError::Api { status, error }) => {
+            assert_eq!(status, 502);
+            assert_eq!(error, "upstream timeout");
+        }
+        other => panic!("expected Api error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn refresh_maps_invalid_grant() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/oauth/token"))
+        .and(body_string_contains("grant_type=refresh_token"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "refresh token revoked"
+        })))
+        .mount(&server)
+        .await;
+
+    let client = auth_client(&server.uri());
+    let result = client.refresh("rt-revoked").await;
+
+    assert!(matches!(result, Err(ScribeError::InvalidGrant(_))));
+}
+
+#[tokio::test]
 async fn refresh_returns_new_token_set() {
     let server = MockServer::start().await;
 

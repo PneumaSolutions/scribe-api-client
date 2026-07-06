@@ -2,7 +2,7 @@ use scribe_client::{DocumentSource, OutputFormat, ScribeClient, ScribeError, Tok
 use time::OffsetDateTime;
 use url::Url;
 use wiremock::{
-    matchers::{header, method, path},
+    matchers::{body_string_contains, header, method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
@@ -120,6 +120,189 @@ async fn download_output_maps_conversion_not_complete() {
     let result = client.download_output("doc-1", OutputFormat::Pdf).await;
 
     assert!(matches!(result, Err(ScribeError::ConversionNotComplete)));
+}
+
+#[tokio::test]
+async fn create_document_from_url_returns_document_id() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/documents"))
+        .and(header("authorization", "Bearer at-valid"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "document_id": "doc-2"
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server, valid_tokens());
+    let doc = client
+        .create_document(DocumentSource::Url("https://example.com/report.pdf".into()))
+        .await
+        .unwrap();
+
+    assert_eq!(doc.document_id, "doc-2");
+}
+
+#[tokio::test]
+async fn list_outputs_maps_not_found() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/documents/missing/outputs"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": "not_found"
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server, valid_tokens());
+    let result = client.list_outputs("missing").await;
+
+    assert!(matches!(result, Err(ScribeError::NotFound)));
+}
+
+#[tokio::test]
+async fn list_outputs_maps_forbidden() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/documents/other-users-doc/outputs"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "error": "forbidden"
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server, valid_tokens());
+    let result = client.list_outputs("other-users-doc").await;
+
+    assert!(matches!(result, Err(ScribeError::Forbidden)));
+}
+
+#[tokio::test]
+async fn list_outputs_maps_unrecognized_error_to_api_variant() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
+            "error": "internal_error"
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server, valid_tokens());
+    let result = client.list_outputs("doc-1").await;
+
+    match result {
+        Err(ScribeError::Api { status, error }) => {
+            assert_eq!(status, 500);
+            assert_eq!(error, "internal_error");
+        }
+        other => panic!("expected Api error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_second_401_after_refresh_is_not_retried_again() {
+    let server = MockServer::start().await;
+
+    // Every request gets a 401, including the retry after refresh: the
+    // client must not loop forever, so the second 401 should surface as
+    // an HTTP error rather than triggering another refresh attempt.
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/oauth/token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "access_token": "at-fresh",
+            "refresh_token": "rt-fresh",
+            "expires_in": 3600
+        })))
+        .mount(&server)
+        .await;
+
+    let stale_tokens = TokenSet {
+        access_token: "at-stale".into(),
+        refresh_token: Some("rt-stale".into()),
+        expires_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
+    };
+
+    let client = client_for(&server, stale_tokens);
+    let result = client.list_outputs("doc-1").await;
+
+    // The second 401 has no JSON body, so it should surface as a generic
+    // Api error with status 401 rather than panicking or looping.
+    assert!(matches!(
+        result,
+        Err(ScribeError::Api { status: 401, .. })
+    ));
+}
+
+#[tokio::test]
+async fn a_401_with_no_refresh_token_available_surfaces_invalid_grant() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+
+    let tokens_without_refresh = TokenSet {
+        access_token: "at-stale".into(),
+        refresh_token: None,
+        expires_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
+    };
+
+    let client = client_for(&server, tokens_without_refresh);
+    let result = client.list_outputs("doc-1").await;
+
+    assert!(matches!(result, Err(ScribeError::InvalidGrant(_))));
+}
+
+#[tokio::test]
+async fn proactive_refresh_happens_before_expiry_without_a_401() {
+    let server = MockServer::start().await;
+
+    // No mock for the stale token: if the client didn't proactively refresh
+    // (it's within REFRESH_SKEW of expiring), this request would 404 against
+    // wiremock's default "no matching mock" response rather than succeeding.
+    Mock::given(method("POST"))
+        .and(path("/oauth/token"))
+        .and(body_string_contains("grant_type=refresh_token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "access_token": "at-fresh",
+            "refresh_token": "rt-fresh",
+            "expires_in": 3600
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs"))
+        .and(header("authorization", "Bearer at-fresh"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({ "outputs": [] })),
+        )
+        .mount(&server)
+        .await;
+
+    let about_to_expire = TokenSet {
+        access_token: "at-stale".into(),
+        refresh_token: Some("rt-stale".into()),
+        expires_at: Some(OffsetDateTime::now_utc() + time::Duration::seconds(5)),
+    };
+
+    let client = client_for(&server, about_to_expire);
+    let outputs = client.list_outputs("doc-1").await.unwrap();
+
+    assert!(outputs.is_empty());
 }
 
 #[tokio::test]

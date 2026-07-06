@@ -126,4 +126,37 @@ mod tests {
 
         assert_eq!(OutputFormat::parse("not_a_format"), None);
     }
+
+    #[test]
+    fn only_the_complete_stage_reports_is_complete() {
+        let all = [
+            Stage::Queue,
+            Stage::Start,
+            Stage::Convert,
+            Stage::AddImageDescriptions,
+            Stage::Complete,
+        ];
+
+        for stage in all {
+            assert_eq!(stage.is_complete(), stage == Stage::Complete);
+        }
+    }
+
+    #[test]
+    fn stage_as_str_round_trips_through_json() {
+        let all = [
+            (Stage::Queue, "queue"),
+            (Stage::Start, "start"),
+            (Stage::Convert, "convert"),
+            (Stage::AddImageDescriptions, "add_image_descriptions"),
+            (Stage::Complete, "complete"),
+        ];
+
+        for (stage, expected) in all {
+            assert_eq!(stage.as_str(), expected);
+            let deserialized: Stage =
+                serde_json::from_str(&format!("{expected:?}")).unwrap();
+            assert_eq!(deserialized, stage);
+        }
+    }
 }

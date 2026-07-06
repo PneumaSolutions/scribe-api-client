@@ -252,4 +252,48 @@ mod tests {
         assert_ne!(a.verifier(), b.verifier());
         assert_ne!(a.challenge(), b.challenge());
     }
+
+    #[test]
+    fn token_with_no_expiry_never_needs_refresh() {
+        let tokens = TokenSet {
+            access_token: "at".into(),
+            refresh_token: None,
+            expires_at: None,
+        };
+
+        assert!(!tokens.needs_refresh(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn token_well_outside_skew_does_not_need_refresh() {
+        let tokens = TokenSet {
+            access_token: "at".into(),
+            refresh_token: None,
+            expires_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
+        };
+
+        assert!(!tokens.needs_refresh(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn token_within_skew_of_expiry_needs_refresh() {
+        let tokens = TokenSet {
+            access_token: "at".into(),
+            refresh_token: None,
+            expires_at: Some(OffsetDateTime::now_utc() + time::Duration::seconds(5)),
+        };
+
+        assert!(tokens.needs_refresh(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn already_expired_token_needs_refresh() {
+        let tokens = TokenSet {
+            access_token: "at".into(),
+            refresh_token: None,
+            expires_at: Some(OffsetDateTime::now_utc() - time::Duration::hours(1)),
+        };
+
+        assert!(tokens.needs_refresh(Duration::from_secs(30)));
+    }
 }
