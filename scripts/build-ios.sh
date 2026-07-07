@@ -14,6 +14,8 @@
 set -euo pipefail
 
 WORKSPACE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Run all cargo commands from the workspace root so Cargo.toml is found.
+cd "$WORKSPACE_DIR"
 TARGET_DIR="$WORKSPACE_DIR/target"
 OUTPUT_DIR="$WORKSPACE_DIR/output"
 IOS_PROJECT_DIR="$WORKSPACE_DIR/../scribe-ios/ScribeApp/Generated"
