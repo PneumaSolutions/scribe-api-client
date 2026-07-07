@@ -54,7 +54,7 @@ impl PkceChallenge {
 }
 
 /// An access/refresh token pair returned by `POST /oauth/token`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TokenSet {
     pub access_token: String,
     pub refresh_token: Option<String>,

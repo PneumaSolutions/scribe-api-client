@@ -73,6 +73,12 @@ impl ScribeClient {
         Ok(tokens.access_token.clone())
     }
 
+    /// Returns a snapshot of the current token set. Useful for persisting
+    /// the session after the client has auto-refreshed it.
+    pub async fn current_tokens(&self) -> TokenSet {
+        self.tokens.lock().await.clone()
+    }
+
     /// Force-refreshes and replaces the current token set. Also used after
     /// a request unexpectedly comes back `401` even though our local
     /// expiry tracking thought the token was still good.
