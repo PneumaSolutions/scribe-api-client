@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 base64 = "0.22"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "native-tls"] }
 serde = { version = "1", features = ["derive"] }
@@ -19,8 +20,9 @@ sha2 = "0.10"
 thiserror = "1"
 time = { version = "0.3", features = ["serde", "parsing", "formatting"] }
 tokio = { version = "1", features = ["rt", "macros", "sync"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 url = "2"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 wiremock = "0.6"

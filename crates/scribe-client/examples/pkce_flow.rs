@@ -9,9 +9,7 @@
 //! access, the browser will be redirected to `redirect_uri` with a `code`
 //! query parameter; paste that value back into the prompt to complete the
 //! exchange.
-
 use std::io::{self, Write};
-
 use scribe_client::{AuthClient, PkceChallenge};
 
 #[tokio::main]
@@ -21,26 +19,21 @@ async fn main() {
     let base_url = args.next().expect(usage);
     let client_id = args.next().expect(usage);
     let redirect_uri = args.next().expect(usage);
-
     let base_url = base_url.parse().expect("base_url must be a valid URL");
     let http = reqwest::Client::new();
     let auth = AuthClient::new(http, base_url, client_id);
     let pkce = PkceChallenge::generate();
-
     let authorize_url = auth.authorization_url(&redirect_uri, &pkce);
-
     println!("Open this URL in a browser, log in, and approve access:\n");
     println!("  {authorize_url}\n");
     println!("You'll be redirected to {redirect_uri}?code=... ; paste the code below.");
     print!("code: ");
     io::stdout().flush().expect("failed to flush stdout");
-
     let mut code = String::new();
     io::stdin()
         .read_line(&mut code)
         .expect("failed to read code from stdin");
     let code = code.trim();
-
     match auth
         .exchange_code(&redirect_uri, code, pkce.verifier())
         .await

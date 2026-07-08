@@ -1,4 +1,4 @@
-use scribe_client::{OutputFormat, ScribeClient, ScribeError, TokenSet};
+use scribe_client::{ScribeClient, ScribeError, TokenSet};
 use time::OffsetDateTime;
 use url::Url;
 use wiremock::{
@@ -44,16 +44,13 @@ fn settings_json() -> serde_json::Value {
 #[tokio::test]
 async fn get_settings_returns_current_document_settings() {
     let server = MockServer::start().await;
-
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/settings"))
         .respond_with(ResponseTemplate::new(200).set_body_json(settings_json()))
         .mount(&server)
         .await;
-
     let client = client_for(&server, valid_tokens());
     let settings = client.get_settings("doc-1").await.unwrap();
-
     assert_eq!(settings.language.as_deref(), Some("en"));
     assert_eq!(settings.braille_translation_table, "en-us-g2.ctb");
     assert!(settings.add_image_descriptions);
@@ -63,7 +60,6 @@ async fn get_settings_returns_current_document_settings() {
 #[tokio::test]
 async fn get_settings_maps_not_found() {
     let server = MockServer::start().await;
-
     Mock::given(method("GET"))
         .and(path("/api/documents/missing/settings"))
         .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
@@ -71,17 +67,14 @@ async fn get_settings_maps_not_found() {
         })))
         .mount(&server)
         .await;
-
     let client = client_for(&server, valid_tokens());
     let result = client.get_settings("missing").await;
-
     assert!(matches!(result, Err(ScribeError::NotFound)));
 }
 
 #[tokio::test]
 async fn update_settings_sends_partial_update_and_returns_new_settings() {
     let server = MockServer::start().await;
-
     Mock::given(method("PATCH"))
         .and(path("/api/documents/doc-1/settings"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -116,7 +109,10 @@ async fn update_settings_sends_partial_update_and_returns_new_settings() {
     let request = &server.received_requests().await.unwrap()[0];
     let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
     assert_eq!(body["settings"]["large_print"], true);
-    assert_eq!(body["settings"]["braille_translation_table"], "en-gb-g1.utb");
+    assert_eq!(
+        body["settings"]["braille_translation_table"],
+        "en-gb-g1.utb"
+    );
     // Fields that weren't set shouldn't be sent at all.
     assert!(body["settings"].get("language").is_none());
 }
@@ -139,59 +135,6 @@ async fn update_settings_maps_forbidden() {
         .await;
 
     assert!(matches!(result, Err(ScribeError::Forbidden)));
-}
-
-#[tokio::test]
-async fn create_output_returns_the_new_output() {
-    let server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/api/documents/doc-1/outputs"))
-        .respond_with(ResponseTemplate::new(202).set_body_json(serde_json::json!({
-            "format": "pdf",
-            "stage": "start",
-            "progress": 0.0,
-            "estimated_time_remaining": null,
-            "is_preview": false
-        })))
-        .mount(&server)
-        .await;
-
-    let client = client_for(&server, valid_tokens());
-    let output = client
-        .create_output("doc-1", OutputFormat::Pdf)
-        .await
-        .unwrap();
-
-    assert_eq!(output.format, OutputFormat::Pdf);
-
-    let request = &server.received_requests().await.unwrap()[0];
-    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
-    assert_eq!(body["format"], "pdf");
-}
-
-#[tokio::test]
-async fn create_output_maps_unsupported_format_to_api_error() {
-    let server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/api/documents/doc-1/outputs"))
-        .respond_with(ResponseTemplate::new(422).set_body_json(serde_json::json!({
-            "error": "unsupported_output_format"
-        })))
-        .mount(&server)
-        .await;
-
-    let client = client_for(&server, valid_tokens());
-    let result = client.create_output("doc-1", OutputFormat::Pdf).await;
-
-    match result {
-        Err(ScribeError::Api { status, error }) => {
-            assert_eq!(status, 422);
-            assert_eq!(error, "unsupported_output_format");
-        }
-        other => panic!("expected Api error, got {other:?}"),
-    }
 }
 
 #[tokio::test]

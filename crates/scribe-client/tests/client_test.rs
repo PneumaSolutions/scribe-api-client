@@ -26,7 +26,6 @@ fn client_for(server: &MockServer, tokens: TokenSet) -> ScribeClient {
 #[tokio::test]
 async fn create_document_from_file_returns_document_id() {
     let server = MockServer::start().await;
-
     Mock::given(method("POST"))
         .and(path("/api/documents"))
         .and(header("authorization", "Bearer at-valid"))
@@ -35,7 +34,6 @@ async fn create_document_from_file_returns_document_id() {
         })))
         .mount(&server)
         .await;
-
     let client = client_for(&server, valid_tokens());
     let doc = client
         .create_document(DocumentSource::File {
@@ -44,14 +42,12 @@ async fn create_document_from_file_returns_document_id() {
         })
         .await
         .unwrap();
-
     assert_eq!(doc.document_id, "doc-1");
 }
 
 #[tokio::test]
 async fn list_outputs_parses_in_progress_and_complete_rows() {
     let server = MockServer::start().await;
-
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -74,10 +70,8 @@ async fn list_outputs_parses_in_progress_and_complete_rows() {
         })))
         .mount(&server)
         .await;
-
     let client = client_for(&server, valid_tokens());
     let outputs = client.list_outputs("doc-1").await.unwrap();
-
     assert_eq!(outputs.len(), 2);
     assert_eq!(outputs[0].format, OutputFormat::HtmlStream);
     assert!(!outputs[0].stage.is_complete());
@@ -88,26 +82,22 @@ async fn list_outputs_parses_in_progress_and_complete_rows() {
 #[tokio::test]
 async fn download_output_returns_bytes_when_complete() {
     let server = MockServer::start().await;
-
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs/pdf/download"))
         .respond_with(ResponseTemplate::new(200).set_body_bytes(b"%PDF-1.4 fake".to_vec()))
         .mount(&server)
         .await;
-
     let client = client_for(&server, valid_tokens());
     let bytes = client
         .download_output("doc-1", OutputFormat::Pdf)
         .await
         .unwrap();
-
     assert_eq!(bytes, b"%PDF-1.4 fake".to_vec());
 }
 
 #[tokio::test]
 async fn download_output_maps_conversion_not_complete() {
     let server = MockServer::start().await;
-
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs/pdf/download"))
         .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
@@ -115,17 +105,14 @@ async fn download_output_maps_conversion_not_complete() {
         })))
         .mount(&server)
         .await;
-
     let client = client_for(&server, valid_tokens());
     let result = client.download_output("doc-1", OutputFormat::Pdf).await;
-
     assert!(matches!(result, Err(ScribeError::ConversionNotComplete)));
 }
 
 #[tokio::test]
 async fn create_document_from_url_returns_document_id() {
     let server = MockServer::start().await;
-
     Mock::given(method("POST"))
         .and(path("/api/documents"))
         .and(header("authorization", "Bearer at-valid"))
@@ -134,20 +121,17 @@ async fn create_document_from_url_returns_document_id() {
         })))
         .mount(&server)
         .await;
-
     let client = client_for(&server, valid_tokens());
     let doc = client
         .create_document(DocumentSource::Url("https://example.com/report.pdf".into()))
         .await
         .unwrap();
-
     assert_eq!(doc.document_id, "doc-2");
 }
 
 #[tokio::test]
 async fn list_outputs_maps_not_found() {
     let server = MockServer::start().await;
-
     Mock::given(method("GET"))
         .and(path("/api/documents/missing/outputs"))
         .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
@@ -155,17 +139,14 @@ async fn list_outputs_maps_not_found() {
         })))
         .mount(&server)
         .await;
-
     let client = client_for(&server, valid_tokens());
     let result = client.list_outputs("missing").await;
-
     assert!(matches!(result, Err(ScribeError::NotFound)));
 }
 
 #[tokio::test]
 async fn list_outputs_maps_forbidden() {
     let server = MockServer::start().await;
-
     Mock::given(method("GET"))
         .and(path("/api/documents/other-users-doc/outputs"))
         .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
@@ -173,17 +154,14 @@ async fn list_outputs_maps_forbidden() {
         })))
         .mount(&server)
         .await;
-
     let client = client_for(&server, valid_tokens());
     let result = client.list_outputs("other-users-doc").await;
-
     assert!(matches!(result, Err(ScribeError::Forbidden)));
 }
 
 #[tokio::test]
 async fn list_outputs_maps_unrecognized_error_to_api_variant() {
     let server = MockServer::start().await;
-
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs"))
         .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
@@ -191,10 +169,8 @@ async fn list_outputs_maps_unrecognized_error_to_api_variant() {
         })))
         .mount(&server)
         .await;
-
     let client = client_for(&server, valid_tokens());
     let result = client.list_outputs("doc-1").await;
-
     match result {
         Err(ScribeError::Api { status, error }) => {
             assert_eq!(status, 500);
@@ -207,7 +183,6 @@ async fn list_outputs_maps_unrecognized_error_to_api_variant() {
 #[tokio::test]
 async fn a_second_401_after_refresh_is_not_retried_again() {
     let server = MockServer::start().await;
-
     // Every request gets a 401, including the retry after refresh: the
     // client must not loop forever, so the second 401 should surface as
     // an HTTP error rather than triggering another refresh attempt.
@@ -216,7 +191,6 @@ async fn a_second_401_after_refresh_is_not_retried_again() {
         .respond_with(ResponseTemplate::new(401))
         .mount(&server)
         .await;
-
     Mock::given(method("POST"))
         .and(path("/oauth/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -226,53 +200,42 @@ async fn a_second_401_after_refresh_is_not_retried_again() {
         })))
         .mount(&server)
         .await;
-
     let stale_tokens = TokenSet {
         access_token: "at-stale".into(),
         refresh_token: Some("rt-stale".into()),
         expires_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
     };
-
     let client = client_for(&server, stale_tokens);
     let result = client.list_outputs("doc-1").await;
-
     // The second 401 has no JSON body, so it should surface as a generic
     // Api error with status 401 rather than panicking or looping.
-    assert!(matches!(
-        result,
-        Err(ScribeError::Api { status: 401, .. })
-    ));
+    assert!(matches!(result, Err(ScribeError::Api { status: 401, .. })));
 }
 
 #[tokio::test]
 async fn a_401_with_no_refresh_token_available_surfaces_invalid_grant() {
     let server = MockServer::start().await;
-
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs"))
         .respond_with(ResponseTemplate::new(401))
         .mount(&server)
         .await;
-
     let tokens_without_refresh = TokenSet {
         access_token: "at-stale".into(),
         refresh_token: None,
         expires_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
     };
-
     let client = client_for(&server, tokens_without_refresh);
     let result = client.list_outputs("doc-1").await;
-
     assert!(matches!(result, Err(ScribeError::InvalidGrant(_))));
 }
 
 #[tokio::test]
 async fn proactive_refresh_happens_before_expiry_without_a_401() {
     let server = MockServer::start().await;
-
     // No mock for the stale token: if the client didn't proactively refresh
     // (it's within REFRESH_SKEW of expiring), this request would 404 against
-    // wiremock's default "no matching mock" response rather than succeeding.
+    // wiremock's default "no matching mock" response.
     Mock::given(method("POST"))
         .and(path("/oauth/token"))
         .and(body_string_contains("grant_type=refresh_token"))
@@ -283,7 +246,6 @@ async fn proactive_refresh_happens_before_expiry_without_a_401() {
         })))
         .mount(&server)
         .await;
-
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs"))
         .and(header("authorization", "Bearer at-fresh"))
@@ -292,23 +254,19 @@ async fn proactive_refresh_happens_before_expiry_without_a_401() {
         )
         .mount(&server)
         .await;
-
     let about_to_expire = TokenSet {
         access_token: "at-stale".into(),
         refresh_token: Some("rt-stale".into()),
         expires_at: Some(OffsetDateTime::now_utc() + time::Duration::seconds(5)),
     };
-
     let client = client_for(&server, about_to_expire);
     let outputs = client.list_outputs("doc-1").await.unwrap();
-
     assert!(outputs.is_empty());
 }
 
 #[tokio::test]
 async fn a_401_triggers_refresh_and_retries_once() {
     let server = MockServer::start().await;
-
     // The initial (stale) token gets a 401, which triggers a refresh, and
     // the retry with the new token succeeds.
     Mock::given(method("GET"))
@@ -317,7 +275,6 @@ async fn a_401_triggers_refresh_and_retries_once() {
         .respond_with(ResponseTemplate::new(401))
         .mount(&server)
         .await;
-
     Mock::given(method("POST"))
         .and(path("/oauth/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -327,7 +284,6 @@ async fn a_401_triggers_refresh_and_retries_once() {
         })))
         .mount(&server)
         .await;
-
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs"))
         .and(header("authorization", "Bearer at-fresh"))
@@ -336,15 +292,92 @@ async fn a_401_triggers_refresh_and_retries_once() {
         )
         .mount(&server)
         .await;
-
     let stale_tokens = TokenSet {
         access_token: "at-stale".into(),
         refresh_token: Some("rt-stale".into()),
         expires_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
     };
-
     let client = client_for(&server, stale_tokens);
     let outputs = client.list_outputs("doc-1").await.unwrap();
-
     assert!(outputs.is_empty());
+}
+
+#[tokio::test]
+async fn list_documents_parses_documents_with_embedded_outputs() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents"))
+        .and(header("authorization", "Bearer at-valid"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "documents": [
+                {
+                    "id": "doc-1",
+                    "title": "Report",
+                    "page_count": 3,
+                    "inserted_at": "2026-07-08T20:04:24.000000Z",
+                    "outputs": [
+                        {
+                            "format": "html_stream",
+                            "stage": "complete",
+                            "progress": 1.0,
+                            "estimated_time_remaining": null,
+                            "is_preview": false
+                        }
+                    ]
+                }
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let documents = client.list_documents().await.unwrap();
+    assert_eq!(documents.len(), 1);
+    assert_eq!(documents[0].id, "doc-1");
+    assert_eq!(documents[0].title, "Report");
+    assert_eq!(documents[0].page_count, Some(3));
+    assert_eq!(documents[0].outputs.len(), 1);
+    assert_eq!(documents[0].outputs[0].format, OutputFormat::HtmlStream);
+}
+
+#[tokio::test]
+async fn delete_document_succeeds_on_204() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/documents/doc-1"))
+        .and(header("authorization", "Bearer at-valid"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    client.delete_document("doc-1").await.unwrap();
+}
+
+#[tokio::test]
+async fn delete_document_maps_not_found() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/documents/missing"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": "not_found"
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let result = client.delete_document("missing").await;
+    assert!(matches!(result, Err(ScribeError::NotFound)));
+}
+
+#[tokio::test]
+async fn delete_document_maps_forbidden() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/documents/doc-1"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "error": "forbidden"
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let result = client.delete_document("doc-1").await;
+    assert!(matches!(result, Err(ScribeError::Forbidden)));
 }

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Interactive demo of the OAuth 2.0 Authorization Code + PKCE flow against a
 real Scribe server, followed by a full document conversion round trip
-(upload, poll for completion, download).
+(upload, start a conversion over the document channel, watch it finish,
+download).
 
 Analogous to crates/scribe-client/examples/pkce_flow.rs, but goes one step
 further into the document endpoints since exercising those against a real
@@ -15,7 +16,7 @@ Configure via environment variables:
     SCRIBE_DOCUMENT_PATH  local file to upload (mutually exclusive with
                            SCRIBE_DOCUMENT_URL)
     SCRIBE_DOCUMENT_URL   have the server fetch the document instead
-    SCRIBE_OUTPUT_FORMAT  output format to wait for and download
+    SCRIBE_OUTPUT_FORMAT  output format to convert to and download
                            (default: pdf)
 
 Run with:
@@ -25,13 +26,9 @@ Run with:
 
 import os
 import sys
-import time
 from pathlib import Path
 
-from scribe_client import AuthClient, ConversionNotCompleteError, PkceChallenge, ScribeClient
-
-POLL_INTERVAL_SECONDS = 2
-POLL_TIMEOUT_SECONDS = 300
+from scribe_client import AuthClient, PkceChallenge, ScribeClient
 
 
 def env_or_exit(name: str) -> str:
@@ -77,31 +74,28 @@ def create_document(client: ScribeClient) -> str:
     sys.exit(1)
 
 
-def wait_for_output(client: ScribeClient, document_id: str, output_format: str) -> bytes:
-    deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
+def convert_and_wait(client: ScribeClient, document_id: str, output_format: str) -> bytes:
+    """Starts converting to `output_format` over the document channel and
+    watches for it to finish, printing progress along the way."""
+    channel = client.open_document_channel(document_id)
 
-    while time.monotonic() < deadline:
-        outputs = client.list_outputs(document_id)
-        matching = next((o for o in outputs if o.format == output_format), None)
+    try:
+        channel.start_conversion(output_format)
 
-        if matching is None:
-            print(f"  waiting for {output_format!r} output to appear...")
-        else:
-            print(
-                f"  {output_format}: stage={matching.stage} "
-                f"progress={matching.progress:.0%} "
-                f"eta={matching.estimated_time_remaining}s"
-            )
-            if matching.stage == "complete":
-                try:
-                    return client.download_output(document_id, output_format)
-                except ConversionNotCompleteError:
-                    pass  # rare race between list_outputs and download; keep polling
+        while True:
+            event = channel.next_event()
 
-        time.sleep(POLL_INTERVAL_SECONDS)
-
-    print(f"timed out waiting for {output_format!r} to finish converting", file=sys.stderr)
-    sys.exit(1)
+            if event["type"] == "status" and event["format"] == output_format:
+                print(f"  {output_format}: stage={event['stage']} progress={event['progress']:.0%}")
+            elif event["type"] == "conversion_complete" and event["format"] == output_format:
+                return client.download_output(document_id, output_format)
+            elif event["type"] == "error":
+                print(f"conversion error: {event['reason']}", file=sys.stderr)
+                sys.exit(1)
+            # Events for other formats (e.g. an incomplete parent format
+            # like html) are pushed too but aren't interesting here.
+    finally:
+        channel.close()
 
 
 def main():
@@ -121,8 +115,8 @@ def main():
     document_id = create_document(client)
     print(f"\nDocument created: {document_id}")
 
-    print(f"\nPolling until {output_format!r} is ready...")
-    data = wait_for_output(client, document_id, output_format)
+    print(f"\nConverting to {output_format!r}...")
+    data = convert_and_wait(client, document_id, output_format)
 
     out_path = Path(f"{document_id}.{output_format}")
     out_path.write_bytes(data)

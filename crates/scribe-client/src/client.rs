@@ -7,11 +7,12 @@ use url::Url;
 
 use crate::{
     auth::{AuthClient, TokenSet},
+    channel::DocumentChannel,
     error::ScribeError,
     model::{
         BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect, DialectsResponse,
-        Language, LanguagesResponse, Output, OutputFormat, OutputListResponse, Settings,
-        SettingsUpdate, Voice, VoicesResponse,
+        DocumentListResponse, DocumentSummary, Language, LanguagesResponse, Output, OutputFormat,
+        OutputListResponse, Settings, SettingsUpdate, Voice, VoicesResponse,
     },
 };
 
@@ -125,6 +126,84 @@ impl ScribeClient {
         .await
     }
 
+    /// Lists every document owned by the current user, each with its
+    /// outputs embedded (so this alone is enough to show a document list
+    /// with per-document conversion status, no follow-up `list_outputs`
+    /// calls needed).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn list_documents(&self) -> Result<Vec<DocumentSummary>, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/documents");
+
+        let response: DocumentListResponse = self
+            .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await?;
+
+        Ok(response.documents)
+    }
+
+    /// Permanently deletes a document and all of its outputs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
+    /// document doesn't exist or isn't owned by the caller, or
+    /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures.
+    pub async fn delete_document(&self, document_id: &str) -> Result<(), ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path(&format!("/api/documents/{document_id}"));
+
+        let token = self.access_token().await?;
+        self.http
+            .delete(url)
+            .bearer_auth(&token)
+            .send()
+            .await?
+            .error_for_status_or_json_error()
+            .await?;
+
+        Ok(())
+    }
+
+    /// Opens a real-time channel for `document_id`, subscribing to
+    /// progress on whatever formats are already in progress (or their
+    /// incomplete parent formats) and allowing new conversions to be
+    /// started with [`DocumentChannel::start_conversion`]. This is the
+    /// only way to start a conversion for a format other than the
+    /// `html_stream` preview `create_document` already starts — it's no
+    /// longer possible over plain REST, so the server can guarantee it's
+    /// subscribed to whatever it just started converting.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
+    /// document doesn't exist or isn't owned by the caller, or
+    /// [`ScribeError::WebSocket`] if the connection fails.
+    pub async fn open_document_channel(
+        &self,
+        document_id: &str,
+    ) -> Result<DocumentChannel, ScribeError> {
+        let token = self.access_token().await?;
+
+        let mut url = self.base_url.clone();
+        let ws_scheme = if url.scheme() == "https" { "wss" } else { "ws" };
+        url.set_scheme(ws_scheme)
+            .map_err(|()| ScribeError::Channel("failed to build a WebSocket URL".into()))?;
+        url.set_path("/socket/websocket");
+        url.query_pairs_mut()
+            .append_pair("vsn", "2.0.0")
+            .append_pair("token", &token);
+
+        let (ws, _response) = tokio_tungstenite::connect_async(url.as_str())
+            .await
+            .map_err(|e| ScribeError::WebSocket(Box::new(e)))?;
+
+        DocumentChannel::join(ws, document_id).await
+    }
+
     /// Lists every output (in-progress and completed) for a document.
     ///
     /// # Errors
@@ -207,35 +286,8 @@ impl ScribeClient {
         url.set_path(&format!("/api/documents/{document_id}/settings"));
         let body = serde_json::json!({ "settings": update });
 
-        self.with_auth_retry(|token| {
-            self.http.patch(url.clone()).bearer_auth(token).json(&body)
-        })
-        .await
-    }
-
-    /// Starts converting a document to `format`, using its current
-    /// settings. Idempotent: calling this again for a format that's already
-    /// converting or complete returns that existing output.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
-    /// document doesn't exist or isn't owned by the caller, or
-    /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures
-    /// (including an unsupported `format`).
-    pub async fn create_output(
-        &self,
-        document_id: &str,
-        format: OutputFormat,
-    ) -> Result<Output, ScribeError> {
-        let mut url = self.base_url.clone();
-        url.set_path(&format!("/api/documents/{document_id}/outputs"));
-        let body = serde_json::json!({ "format": format.as_str() });
-
-        self.with_auth_retry(|token| {
-            self.http.post(url.clone()).bearer_auth(token).json(&body)
-        })
-        .await
+        self.with_auth_retry(|token| self.http.patch(url.clone()).bearer_auth(token).json(&body))
+            .await
     }
 
     /// Lists every language available for TTS narration.

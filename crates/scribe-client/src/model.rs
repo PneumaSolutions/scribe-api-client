@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 /// A document conversion output format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OutputFormat {
     Html,
@@ -54,7 +54,7 @@ impl OutputFormat {
 }
 
 /// The current stage of a document conversion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stage {
     Queue,
@@ -101,6 +101,22 @@ pub struct CreatedDocument {
 #[derive(Debug, Deserialize)]
 pub(crate) struct OutputListResponse {
     pub outputs: Vec<Output>,
+}
+
+/// One row from `GET /api/documents`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DocumentSummary {
+    pub id: String,
+    pub title: String,
+    pub page_count: Option<i64>,
+    /// ISO 8601 UTC timestamp of when the document was created.
+    pub inserted_at: String,
+    pub outputs: Vec<Output>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct DocumentListResponse {
+    pub documents: Vec<DocumentSummary>,
 }
 
 /// A document's current conversion settings
@@ -246,8 +262,7 @@ mod tests {
 
         for (stage, expected) in all {
             assert_eq!(stage.as_str(), expected);
-            let deserialized: Stage =
-                serde_json::from_str(&format!("{expected:?}")).unwrap();
+            let deserialized: Stage = serde_json::from_str(&format!("{expected:?}")).unwrap();
             assert_eq!(deserialized, stage);
         }
     }

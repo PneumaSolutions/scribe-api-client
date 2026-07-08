@@ -16,8 +16,8 @@ use pyo3::{
 use url::Url;
 
 use scribe_client_core::{
-    AuthClient, DocumentSource, Output, OutputFormat, PkceChallenge, ScribeClient, ScribeError,
-    Settings, SettingsUpdate, TokenSet,
+    AuthClient, DocumentChannel, DocumentSource, DocumentSummary, Output, OutputFormat,
+    PkceChallenge, ScribeClient, ScribeError, Settings, SettingsUpdate, TokenSet,
 };
 
 create_exception!(scribe_client, ScribeApiError, PyException);
@@ -25,6 +25,9 @@ create_exception!(scribe_client, InvalidGrantError, ScribeApiError);
 create_exception!(scribe_client, NotFoundError, ScribeApiError);
 create_exception!(scribe_client, ForbiddenError, ScribeApiError);
 create_exception!(scribe_client, ConversionNotCompleteError, ScribeApiError);
+create_exception!(scribe_client, ConversionInProgressError, ScribeApiError);
+create_exception!(scribe_client, RateLimitedError, ScribeApiError);
+create_exception!(scribe_client, NeedsPurchaseError, ScribeApiError);
 
 fn runtime() -> &'static tokio::runtime::Runtime {
     static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
@@ -44,6 +47,13 @@ fn to_py_err(err: ScribeError) -> PyErr {
         ScribeError::ConversionNotComplete => {
             ConversionNotCompleteError::new_err("document is not finished converting yet")
         }
+        ScribeError::ConversionInProgress => ConversionInProgressError::new_err(
+            "a conversion is already in progress for this document",
+        ),
+        ScribeError::RateLimited => RateLimitedError::new_err("rate limited, try again shortly"),
+        ScribeError::NeedsPurchase { purchase_url } => NeedsPurchaseError::new_err(format!(
+            "insufficient page credits; purchase more at {purchase_url}"
+        )),
         other => ScribeApiError::new_err(other.to_string()),
     }
 }
@@ -226,6 +236,53 @@ impl PyOutput {
     }
 }
 
+/// One row from `list_documents()`.
+#[pyclass(name = "DocumentSummary")]
+struct PyDocumentSummary {
+    inner: DocumentSummary,
+}
+
+#[pymethods]
+impl PyDocumentSummary {
+    #[getter]
+    fn id(&self) -> &str {
+        &self.inner.id
+    }
+
+    #[getter]
+    fn title(&self) -> &str {
+        &self.inner.title
+    }
+
+    #[getter]
+    fn page_count(&self) -> Option<i64> {
+        self.inner.page_count
+    }
+
+    /// ISO 8601 UTC timestamp of when the document was created.
+    #[getter]
+    fn inserted_at(&self) -> &str {
+        &self.inner.inserted_at
+    }
+
+    #[getter]
+    fn outputs(&self) -> Vec<PyOutput> {
+        self.inner
+            .outputs
+            .iter()
+            .cloned()
+            .map(|inner| PyOutput { inner })
+            .collect()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "DocumentSummary(id={:?}, title={:?})",
+            self.inner.id, self.inner.title
+        )
+    }
+}
+
 /// A document's current conversion settings.
 #[pyclass(name = "Settings")]
 struct PySettings {
@@ -360,6 +417,37 @@ impl PyScribeClient {
             .map_err(to_py_err)
     }
 
+    /// Lists every document owned by the current user, each with its
+    /// outputs embedded.
+    fn list_documents(&self, py: Python<'_>) -> PyResult<Vec<PyDocumentSummary>> {
+        py.allow_threads(|| runtime().block_on(self.inner.list_documents()))
+            .map(|docs| {
+                docs.into_iter()
+                    .map(|inner| PyDocumentSummary { inner })
+                    .collect()
+            })
+            .map_err(to_py_err)
+    }
+
+    /// Permanently deletes a document and all of its outputs.
+    fn delete_document(&self, py: Python<'_>, document_id: &str) -> PyResult<()> {
+        py.allow_threads(|| runtime().block_on(self.inner.delete_document(document_id)))
+            .map_err(to_py_err)
+    }
+
+    /// Opens a real-time channel for `document_id`. This is the only way
+    /// to start converting a format other than the `html_stream` preview
+    /// that document creation already starts.
+    fn open_document_channel(
+        &self,
+        py: Python<'_>,
+        document_id: &str,
+    ) -> PyResult<PyDocumentChannel> {
+        py.allow_threads(|| runtime().block_on(self.inner.open_document_channel(document_id)))
+            .map(|inner| PyDocumentChannel { inner: Some(inner) })
+            .map_err(to_py_err)
+    }
+
     /// Lists every output (in-progress and completed) for a document.
     fn list_outputs(&self, py: Python<'_>, document_id: &str) -> PyResult<Vec<PyOutput>> {
         py.allow_threads(|| runtime().block_on(self.inner.list_outputs(document_id)))
@@ -412,15 +500,6 @@ impl PyScribeClient {
             .map_err(to_py_err)
     }
 
-    /// Starts converting a document to `format`, using its current settings.
-    fn create_output(&self, py: Python<'_>, document_id: &str, format: &str) -> PyResult<PyOutput> {
-        let format = parse_format(format)?;
-
-        py.allow_threads(|| runtime().block_on(self.inner.create_output(document_id, format)))
-            .map(|inner| PyOutput { inner })
-            .map_err(to_py_err)
-    }
-
     /// Lists every language available for TTS narration, as `(name, code)`
     /// pairs.
     fn languages(&self, py: Python<'_>) -> PyResult<Vec<(String, String)>> {
@@ -455,10 +534,70 @@ impl PyScribeClient {
         py.allow_threads(|| runtime().block_on(self.inner.voices()))
             .map(|map| {
                 map.into_iter()
-                    .map(|(k, v)| (k, v.into_iter().map(|voice| (voice.0, voice.1, voice.2)).collect()))
+                    .map(|(k, v)| {
+                        (
+                            k,
+                            v.into_iter()
+                                .map(|voice| (voice.0, voice.1, voice.2))
+                                .collect(),
+                        )
+                    })
                     .collect()
             })
             .map_err(to_py_err)
+    }
+}
+
+fn channel_closed_err() -> PyErr {
+    ScribeApiError::new_err("channel is closed")
+}
+
+/// A live connection to a document's real-time channel, obtained from
+/// `ScribeClient.open_document_channel()`. This is the only way to start
+/// converting a format other than the `html_stream` preview that document
+/// creation already starts.
+#[pyclass(name = "DocumentChannel")]
+struct PyDocumentChannel {
+    inner: Option<DocumentChannel>,
+}
+
+#[pymethods]
+impl PyDocumentChannel {
+    /// Starts converting the joined document to `format`, using its
+    /// current settings. Idempotent: if that format is already converting
+    /// or complete, returns its existing output id. Returns immediately;
+    /// progress arrives via subsequent `next_event()` calls.
+    fn start_conversion(&mut self, py: Python<'_>, format: &str) -> PyResult<String> {
+        let format = parse_format(format)?;
+        let channel = self.inner.as_mut().ok_or_else(channel_closed_err)?;
+
+        py.allow_threads(|| runtime().block_on(channel.start_conversion(format)))
+            .map_err(to_py_err)
+    }
+
+    /// Blocks until the next asynchronous event arrives on this channel
+    /// and returns it as a dict. `event["type"]` is one of `"status"`,
+    /// `"chunk"`, `"conversion_complete"`, or `"error"`; the remaining
+    /// keys depend on the type (see the module documentation).
+    fn next_event<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let channel = self.inner.as_mut().ok_or_else(channel_closed_err)?;
+
+        let event = py
+            .allow_threads(|| runtime().block_on(channel.next_event()))
+            .map_err(to_py_err)?;
+
+        pythonize::pythonize(py, &event).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Leaves the channel and closes the underlying connection. Safe to
+    /// call more than once.
+    fn close(&mut self, py: Python<'_>) -> PyResult<()> {
+        if let Some(channel) = self.inner.take() {
+            py.allow_threads(|| runtime().block_on(channel.close()))
+                .map_err(to_py_err)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -468,8 +607,10 @@ fn scribe_client(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyTokenSet>()?;
     m.add_class::<PyAuthClient>()?;
     m.add_class::<PyOutput>()?;
+    m.add_class::<PyDocumentSummary>()?;
     m.add_class::<PySettings>()?;
     m.add_class::<PyScribeClient>()?;
+    m.add_class::<PyDocumentChannel>()?;
 
     m.add("ScribeApiError", py.get_type::<ScribeApiError>())?;
     m.add("InvalidGrantError", py.get_type::<InvalidGrantError>())?;
@@ -479,6 +620,12 @@ fn scribe_client(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
         "ConversionNotCompleteError",
         py.get_type::<ConversionNotCompleteError>(),
     )?;
+    m.add(
+        "ConversionInProgressError",
+        py.get_type::<ConversionInProgressError>(),
+    )?;
+    m.add("RateLimitedError", py.get_type::<RateLimitedError>())?;
+    m.add("NeedsPurchaseError", py.get_type::<NeedsPurchaseError>())?;
 
     Ok(())
 }

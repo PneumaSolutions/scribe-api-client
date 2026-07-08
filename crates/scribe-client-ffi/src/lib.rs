@@ -24,9 +24,7 @@ uniffi::setup_scaffolding!();
 
 fn runtime() -> &'static Runtime {
     static RT: OnceLock<Runtime> = OnceLock::new();
-    RT.get_or_init(|| {
-        Runtime::new().expect("failed to start scribe-client-ffi tokio runtime")
-    })
+    RT.get_or_init(|| Runtime::new().expect("failed to start scribe-client-ffi tokio runtime"))
 }
 
 fn http_client() -> Client {
@@ -78,6 +76,16 @@ impl From<scribe_client_core::ScribeError> for ScribeError {
             scribe_client_core::ScribeError::ConversionNotComplete => Self::ConversionNotComplete,
             scribe_client_core::ScribeError::NotFound => Self::NotFound,
             scribe_client_core::ScribeError::Forbidden => Self::Forbidden,
+            // The document channel (WebSocket) isn't exposed over UniFFI yet;
+            // these all come from that surface, so fall back to a message.
+            other @ (scribe_client_core::ScribeError::WebSocket(_)
+            | scribe_client_core::ScribeError::ChannelClosed
+            | scribe_client_core::ScribeError::ConversionInProgress
+            | scribe_client_core::ScribeError::RateLimited
+            | scribe_client_core::ScribeError::NeedsPurchase { .. }
+            | scribe_client_core::ScribeError::Channel(_)) => Self::Other {
+                message: other.to_string(),
+            },
         }
     }
 }
@@ -187,8 +195,7 @@ impl From<TokenSet> for scribe_client_core::TokenSet {
             access_token: t.access_token,
             refresh_token: t.refresh_token,
             expires_at: t.expires_at_unix_secs.map(|secs| {
-                OffsetDateTime::from_unix_timestamp(secs)
-                    .unwrap_or(OffsetDateTime::UNIX_EPOCH)
+                OffsetDateTime::from_unix_timestamp(secs).unwrap_or(OffsetDateTime::UNIX_EPOCH)
             }),
         }
     }
@@ -224,6 +231,29 @@ impl From<scribe_client_core::Output> for Output {
             progress: o.progress,
             estimated_time_remaining: o.estimated_time_remaining,
             is_preview: o.is_preview,
+        }
+    }
+}
+
+/// One row from `list_documents()`.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DocumentSummary {
+    pub id: String,
+    pub title: String,
+    pub page_count: Option<i64>,
+    /// ISO 8601 UTC timestamp of when the document was created.
+    pub inserted_at: String,
+    pub outputs: Vec<Output>,
+}
+
+impl From<scribe_client_core::DocumentSummary> for DocumentSummary {
+    fn from(d: scribe_client_core::DocumentSummary) -> Self {
+        DocumentSummary {
+            id: d.id,
+            title: d.title,
+            page_count: d.page_count,
+            inserted_at: d.inserted_at,
+            outputs: d.outputs.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -460,16 +490,29 @@ impl FfiScribeClient {
     }
 
     /// Creates a document by having the server fetch it from `url`.
-    pub fn create_document_from_url(
-        &self,
-        url: String,
-    ) -> Result<CreatedDocument, ScribeError> {
+    pub fn create_document_from_url(&self, url: String) -> Result<CreatedDocument, ScribeError> {
         let source = DocumentSource::Url(url);
         runtime()
             .block_on(self.inner.create_document(source))
             .map(|d| CreatedDocument {
                 document_id: d.document_id,
             })
+            .map_err(Into::into)
+    }
+
+    /// Lists every document owned by the current user, each with its
+    /// outputs embedded.
+    pub fn list_documents(&self) -> Result<Vec<DocumentSummary>, ScribeError> {
+        runtime()
+            .block_on(self.inner.list_documents())
+            .map(|docs| docs.into_iter().map(Into::into).collect())
+            .map_err(Into::into)
+    }
+
+    /// Permanently deletes a document and all of its outputs.
+    pub fn delete_document(&self, document_id: String) -> Result<(), ScribeError> {
+        runtime()
+            .block_on(self.inner.delete_document(&document_id))
             .map_err(Into::into)
     }
 
@@ -514,17 +557,13 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    /// Starts converting a document to `format`. Idempotent if already started.
-    pub fn create_output(
-        &self,
-        document_id: String,
-        format: OutputFormat,
-    ) -> Result<Output, ScribeError> {
-        runtime()
-            .block_on(self.inner.create_output(&document_id, format.into()))
-            .map(Into::into)
-            .map_err(Into::into)
-    }
+    // NOTE: starting a conversion for a format other than the `html_stream`
+    // preview now happens exclusively over the document channel (a
+    // WebSocket), not this REST-backed create_output call — the server
+    // removed that endpoint so it can guarantee the channel is subscribed
+    // to whatever it just started converting. `scribe-client-py` exposes
+    // this via `ScribeClient.open_document_channel()`; UniFFI/iOS bindings
+    // for it aren't implemented yet.
 
     /// Lists every language available for TTS narration.
     pub fn languages(&self) -> Result<Vec<Language>, ScribeError> {
