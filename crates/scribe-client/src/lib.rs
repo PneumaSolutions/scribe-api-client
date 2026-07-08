@@ -1,10 +1,4 @@
-//! Rust client for the Scribe document conversion API: OAuth 2.0
-//! Authorization Code + PKCE authentication, document
-//! create/list/delete/download operations, and the real-time document
-//! channel for starting and watching conversions.
-//!
-//! This crate has no `PyO3` dependency; see `scribe-client-py` in the same
-//! workspace for Python bindings.
+//! Rust client for the Scribe document conversion API.
 
 mod auth;
 mod channel;

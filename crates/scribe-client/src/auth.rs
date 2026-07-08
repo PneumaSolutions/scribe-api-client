@@ -133,7 +133,6 @@ impl AuthClient {
             .append_pair("redirect_uri", redirect_uri)
             .append_pair("code_challenge", pkce.challenge())
             .append_pair("code_challenge_method", "S256");
-
         url
     }
 
@@ -155,7 +154,6 @@ impl AuthClient {
     ) -> Result<TokenSet, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path("/oauth/token");
-
         let body = [
             ("grant_type", "authorization_code"),
             ("client_id", &self.client_id),
@@ -163,7 +161,6 @@ impl AuthClient {
             ("code", code),
             ("code_verifier", verifier),
         ];
-
         self.send_token_request(url, &body).await
     }
 
@@ -177,13 +174,11 @@ impl AuthClient {
     pub async fn refresh(&self, refresh_token: &str) -> Result<TokenSet, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path("/oauth/token");
-
         let body = [
             ("grant_type", "refresh_token"),
             ("client_id", &self.client_id),
             ("refresh_token", refresh_token),
         ];
-
         self.send_token_request(url, &body).await
     }
 
@@ -194,7 +189,6 @@ impl AuthClient {
     ) -> Result<TokenSet, ScribeError> {
         let response = self.http.post(url).form(body).send().await?;
         let status = response.status();
-
         if status.is_success() {
             let parsed: TokenResponse = response.json().await?;
             Ok(parsed.into())
@@ -237,7 +231,6 @@ mod tests {
         // RFC 7636 appendix B test vector.
         let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
         let expected_challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
-
         assert_eq!(
             PkceChallenge::derive_challenge(verifier),
             expected_challenge
@@ -259,7 +252,6 @@ mod tests {
             refresh_token: None,
             expires_at: None,
         };
-
         assert!(!tokens.needs_refresh(Duration::from_secs(30)));
     }
 
@@ -270,7 +262,6 @@ mod tests {
             refresh_token: None,
             expires_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
         };
-
         assert!(!tokens.needs_refresh(Duration::from_secs(30)));
     }
 
@@ -281,7 +272,6 @@ mod tests {
             refresh_token: None,
             expires_at: Some(OffsetDateTime::now_utc() + time::Duration::seconds(5)),
         };
-
         assert!(tokens.needs_refresh(Duration::from_secs(30)));
     }
 
@@ -292,7 +282,6 @@ mod tests {
             refresh_token: None,
             expires_at: Some(OffsetDateTime::now_utc() - time::Duration::hours(1)),
         };
-
         assert!(tokens.needs_refresh(Duration::from_secs(30)));
     }
 }

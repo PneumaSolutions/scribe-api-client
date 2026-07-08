@@ -51,7 +51,6 @@ impl ScribeClient {
         tokens: TokenSet,
     ) -> Self {
         let auth = AuthClient::new(http.clone(), base_url.clone(), client_id);
-
         ScribeClient {
             http,
             base_url,
@@ -64,13 +63,11 @@ impl ScribeClient {
     /// to expire and a refresh token is available.
     async fn access_token(&self) -> Result<String, ScribeError> {
         let mut tokens = self.tokens.lock().await;
-
         if tokens.needs_refresh(REFRESH_SKEW) {
             if let Some(refresh_token) = tokens.refresh_token.clone() {
                 *tokens = self.auth.refresh(&refresh_token).await?;
             }
         }
-
         Ok(tokens.access_token.clone())
     }
 
@@ -89,7 +86,6 @@ impl ScribeClient {
             .refresh_token
             .clone()
             .ok_or_else(|| ScribeError::InvalidGrant("no refresh token available".into()))?;
-
         *tokens = self.auth.refresh(&refresh_token).await?;
         Ok(tokens.access_token.clone())
     }
@@ -106,7 +102,6 @@ impl ScribeClient {
     ) -> Result<CreatedDocument, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path("/api/documents");
-
         self.with_auth_retry(|token| {
             let form = match &source {
                 DocumentSource::File { file_name, bytes } => multipart::Form::new().part(
@@ -117,7 +112,6 @@ impl ScribeClient {
                     multipart::Form::new().text("document[url]", source_url.clone())
                 }
             };
-
             self.http
                 .post(url.clone())
                 .bearer_auth(token)
@@ -187,7 +181,6 @@ impl ScribeClient {
         document_id: &str,
     ) -> Result<DocumentChannel, ScribeError> {
         let token = self.access_token().await?;
-
         let mut url = self.base_url.clone();
         let ws_scheme = if url.scheme() == "https" { "wss" } else { "ws" };
         url.set_scheme(ws_scheme)
@@ -196,16 +189,12 @@ impl ScribeClient {
         url.query_pairs_mut()
             .append_pair("vsn", "2.0.0")
             .append_pair("token", &token);
-
         let (ws, _response) = tokio_tungstenite::connect_async(url.as_str())
             .await
             .map_err(|e| ScribeError::WebSocket(Box::new(e)))?;
-
         DocumentChannel::join(ws, document_id).await
     }
 
-    /// Lists every output (in-progress and completed) for a document.
-    ///
     /// # Errors
     ///
     /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
@@ -214,16 +203,12 @@ impl ScribeClient {
     pub async fn list_outputs(&self, document_id: &str) -> Result<Vec<Output>, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path(&format!("/api/documents/{document_id}/outputs"));
-
         let response: OutputListResponse = self
             .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
             .await?;
-
         Ok(response.outputs)
     }
 
-    /// Downloads the bytes of a completed output.
-    ///
     /// # Errors
     ///
     /// Returns [`ScribeError::ConversionNotComplete`] if that format hasn't
@@ -240,7 +225,6 @@ impl ScribeClient {
             "/api/documents/{document_id}/outputs/{}/download",
             format.as_str()
         ));
-
         let token = self.access_token().await?;
         let response = self
             .http
@@ -250,12 +234,9 @@ impl ScribeClient {
             .await?
             .error_for_status_or_json_error()
             .await?;
-
         Ok(response.bytes().await?.to_vec())
     }
 
-    /// Fetches a document's current conversion settings.
-    ///
     /// # Errors
     ///
     /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
@@ -264,13 +245,10 @@ impl ScribeClient {
     pub async fn get_settings(&self, document_id: &str) -> Result<Settings, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path(&format!("/api/documents/{document_id}/settings"));
-
         self.with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
             .await
     }
 
-    /// Applies a partial update to a document's conversion settings.
-    ///
     /// # Errors
     ///
     /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
@@ -285,72 +263,55 @@ impl ScribeClient {
         let mut url = self.base_url.clone();
         url.set_path(&format!("/api/documents/{document_id}/settings"));
         let body = serde_json::json!({ "settings": update });
-
         self.with_auth_retry(|token| self.http.patch(url.clone()).bearer_auth(token).json(&body))
             .await
     }
 
-    /// Lists every language available for TTS narration.
-    ///
     /// # Errors
     ///
     /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
     pub async fn languages(&self) -> Result<Vec<Language>, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path("/api/settings/languages");
-
         let response: LanguagesResponse = self
             .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
             .await?;
-
         Ok(response.languages)
     }
 
-    /// Lists every dialect available for TTS narration, keyed by language code.
-    ///
     /// # Errors
     ///
     /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
     pub async fn dialects(&self) -> Result<HashMap<String, Vec<Dialect>>, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path("/api/settings/dialects");
-
         let response: DialectsResponse = self
             .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
             .await?;
-
         Ok(response.dialects)
     }
 
-    /// Lists every Braille translation table available for `brf` output.
-    ///
     /// # Errors
     ///
     /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
     pub async fn braille_tables(&self) -> Result<Vec<BrailleTable>, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path("/api/settings/braille_tables");
-
         let response: BrailleTablesResponse = self
             .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
             .await?;
-
         Ok(response.braille_tables)
     }
 
-    /// Lists every TTS voice available, keyed by dialect locale.
-    ///
     /// # Errors
     ///
     /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
     pub async fn voices(&self) -> Result<HashMap<String, Vec<Voice>>, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path("/api/settings/voices");
-
         let response: VoicesResponse = self
             .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
             .await?;
-
         Ok(response.voices)
     }
 
@@ -363,14 +324,12 @@ impl ScribeClient {
     {
         let token = self.access_token().await?;
         let response = build(&token).send().await?;
-
         let response = if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             let token = self.force_refresh().await?;
             build(&token).send().await?
         } else {
             response
         };
-
         response
             .error_for_status_or_json_error()
             .await?
@@ -380,9 +339,7 @@ impl ScribeClient {
     }
 }
 
-/// Small helper trait so response-status handling reads the same way at
-/// every call site: map non-2xx responses to [`ScribeError`], parsing the
-/// server's `{"error": "..."}` body when present.
+/// Small helper trait so response-status handling reads the same way at every call site.
 trait ResponseExt {
     async fn error_for_status_or_json_error(self) -> Result<reqwest::Response, ScribeError>;
 }
@@ -390,16 +347,13 @@ trait ResponseExt {
 impl ResponseExt for reqwest::Response {
     async fn error_for_status_or_json_error(self) -> Result<reqwest::Response, ScribeError> {
         let status = self.status();
-
         if status.is_success() {
             return Ok(self);
         }
-
         let text = self.text().await.unwrap_or_default();
         let error = serde_json::from_str::<ApiErrorResponse>(&text)
             .map(|e| e.error)
             .unwrap_or(text);
-
         Err(match (status.as_u16(), error.as_str()) {
             (404, _) => ScribeError::NotFound,
             (403, _) => ScribeError::Forbidden,

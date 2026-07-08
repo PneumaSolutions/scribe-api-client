@@ -120,7 +120,6 @@ pub(crate) struct DocumentListResponse {
 }
 
 /// A document's current conversion settings
-/// (`GET`/`PATCH /api/documents/:id/settings`).
 #[allow(clippy::struct_excessive_bools)] // mirrors the server's flat settings shape
 #[derive(Debug, Clone, Deserialize)]
 pub struct Settings {
@@ -140,8 +139,6 @@ pub struct Settings {
 }
 
 /// A partial update to a document's conversion settings
-/// (`PATCH /api/documents/:id/settings`). Only the fields set to `Some`
-/// are sent, so unset fields are left unchanged server-side.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SettingsUpdate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -227,11 +224,9 @@ mod tests {
             OutputFormat::Mobi,
             OutputFormat::HtmlStream,
         ];
-
         for format in all {
             assert_eq!(OutputFormat::parse(format.as_str()), Some(format));
         }
-
         assert_eq!(OutputFormat::parse("not_a_format"), None);
     }
 
@@ -244,7 +239,6 @@ mod tests {
             Stage::AddImageDescriptions,
             Stage::Complete,
         ];
-
         for stage in all {
             assert_eq!(stage.is_complete(), stage == Stage::Complete);
         }
@@ -259,7 +253,6 @@ mod tests {
             (Stage::AddImageDescriptions, "add_image_descriptions"),
             (Stage::Complete, "complete"),
         ];
-
         for (stage, expected) in all {
             assert_eq!(stage.as_str(), expected);
             let deserialized: Stage = serde_json::from_str(&format!("{expected:?}")).unwrap();

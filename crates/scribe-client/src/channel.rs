@@ -1,8 +1,4 @@
 //! The real-time document channel (`documents:<id>` over `/socket`).
-//!
-//! Creating additional output formats now happens exclusively over this
-//! channel rather than a REST call, so the server can guarantee it's
-//! subscribed to progress updates for whatever it just started converting.
 
 use std::collections::VecDeque;
 
@@ -78,7 +74,6 @@ impl DocumentChannel {
     pub(crate) async fn join(mut ws: WsStream, document_id: &str) -> Result<Self, ScribeError> {
         let topic = format!("documents:{document_id}");
         let join_ref = "1".to_string();
-
         send_frame(
             &mut ws,
             &join_ref,
@@ -88,7 +83,6 @@ impl DocumentChannel {
             Value::Object(serde_json::Map::new()),
         )
         .await?;
-
         let mut channel = DocumentChannel {
             ws,
             topic,
@@ -96,7 +90,6 @@ impl DocumentChannel {
             next_ref: 2,
             pending: VecDeque::new(),
         };
-
         channel.await_reply(&join_ref).await?;
         Ok(channel)
     }
@@ -119,7 +112,6 @@ impl DocumentChannel {
     pub async fn start_conversion(&mut self, format: OutputFormat) -> Result<String, ScribeError> {
         let ref_ = self.take_ref();
         let payload = serde_json::json!({ "format": format.as_str() });
-
         send_frame(
             &mut self.ws,
             &self.join_ref,
@@ -129,9 +121,7 @@ impl DocumentChannel {
             payload,
         )
         .await?;
-
         let response = self.await_reply(&ref_).await?;
-
         response
             .get("output_id")
             .and_then(Value::as_str)
@@ -139,10 +129,6 @@ impl DocumentChannel {
             .ok_or(ScribeError::ChannelClosed)
     }
 
-    /// Waits for and returns the next asynchronous event pushed on this
-    /// channel: a status update, a streamed `html_stream` chunk, a
-    /// completed conversion, or an out-of-band error.
-    ///
     /// # Errors
     ///
     /// Returns [`ScribeError::WebSocket`] if the connection fails, or
@@ -152,22 +138,17 @@ impl DocumentChannel {
         if let Some(event) = self.pending.pop_front() {
             return Ok(event);
         }
-
         loop {
             let (_, _, topic, event, payload) = self.recv_frame().await?;
-
             if topic != self.topic {
                 continue;
             }
-
             if let Some(event) = parse_event(&event, &payload) {
                 return Ok(event);
             }
         }
     }
 
-    /// Leaves the channel and closes the underlying WebSocket connection.
-    ///
     /// # Errors
     ///
     /// Returns [`ScribeError::WebSocket`] if sending the close frame fails.
@@ -204,20 +185,16 @@ impl DocumentChannel {
     async fn await_reply(&mut self, ref_: &str) -> Result<Value, ScribeError> {
         loop {
             let (_, frame_ref, topic, event, payload) = self.recv_frame().await?;
-
             if topic != self.topic {
                 continue;
             }
-
             if event == "phx_reply" && frame_ref.as_deref() == Some(ref_) {
                 let reply: ReplyPayload = serde_json::from_value(payload)?;
-
                 return match reply.status.as_str() {
                     "ok" => Ok(reply.response),
                     _ => Err(map_channel_error(reply.response)),
                 };
             }
-
             if let Some(event) = parse_event(&event, &payload) {
                 self.pending.push_back(event);
             }
@@ -277,7 +254,6 @@ fn map_channel_error(payload: Value) -> ScribeError {
     let Ok(err) = serde_json::from_value::<ErrorReason>(payload) else {
         return ScribeError::ChannelClosed;
     };
-
     match err.reason.as_str() {
         "not_found" => ScribeError::NotFound,
         "forbidden" => ScribeError::Forbidden,
