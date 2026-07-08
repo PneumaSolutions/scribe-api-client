@@ -29,7 +29,6 @@ impl PkceChallenge {
         rand::thread_rng().fill_bytes(&mut bytes);
         let verifier = URL_SAFE_NO_PAD.encode(bytes);
         let challenge = Self::derive_challenge(&verifier);
-
         PkceChallenge {
             verifier,
             challenge,
