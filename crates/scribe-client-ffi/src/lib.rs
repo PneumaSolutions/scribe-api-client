@@ -5,8 +5,10 @@
 //! should dispatch to a background thread / `Task.detached` to avoid blocking
 //! the main actor.
 
-use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+};
 
 use reqwest::Client;
 use time::OffsetDateTime;

@@ -9,8 +9,8 @@
 //! access, the browser will be redirected to `redirect_uri` with a `code`
 //! query parameter; paste that value back into the prompt to complete the
 //! exchange.
-use std::io::{self, Write};
 use scribe_client::{AuthClient, PkceChallenge};
+use std::io::{self, Write};
 
 #[tokio::main]
 async fn main() {
