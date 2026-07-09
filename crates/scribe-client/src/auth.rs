@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use rand::RngCore;
+use rand::Rng;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -26,7 +26,7 @@ impl PkceChallenge {
         // 32 random bytes, base64url-no-pad-encoded, is 43 chars and pulls
         // only from that alphabet.
         let mut bytes = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut bytes);
+        rand::rng().fill_bytes(&mut bytes);
         let verifier = URL_SAFE_NO_PAD.encode(bytes);
         let challenge = Self::derive_challenge(&verifier);
         PkceChallenge {

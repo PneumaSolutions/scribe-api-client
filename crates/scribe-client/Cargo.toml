@@ -10,19 +10,19 @@ description = "Rust client for the Scribe document conversion API"
 workspace = true
 
 [dependencies]
-base64 = "0.22"
-futures-util = { version = "0.3", default-features = false, features = ["sink"] }
-rand = "0.8"
-reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "native-tls"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-sha2 = "0.10"
-thiserror = "1"
-time = { version = "0.3", features = ["serde", "parsing", "formatting"] }
-tokio = { version = "1", features = ["rt", "macros", "sync"] }
-tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
-url = "2"
+base64 = "=0.22.1"
+futures-util = { version = "=0.3.32", default-features = false, features = ["sink"] }
+rand = "=0.10.2"
+reqwest = { version = "=0.13.4", default-features = false, features = ["json", "multipart", "form", "native-tls"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+sha2 = "=0.11.0"
+thiserror = "=2.0.18"
+time = { version = "=0.3.53", features = ["serde", "parsing", "formatting"] }
+tokio = { version = "=1.52.3", features = ["rt", "macros", "sync"] }
+tokio-tungstenite = { version = "=0.29.0", features = ["native-tls"] }
+url = "=2.5.8"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
-wiremock = "0.6"
+tokio = { version = "=1.52.3", features = ["rt-multi-thread", "macros", "net"] }
+wiremock = "=0.6.5"

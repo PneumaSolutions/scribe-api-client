@@ -2,7 +2,7 @@
 //!
 //! The Python API is synchronous/blocking by design: each method runs the
 //! underlying async call on a shared, lazily-started `tokio::Runtime` via
-//! `Python::allow_threads` + `Runtime::block_on`, so the GIL is released
+//! `Python::detach` + `Runtime::block_on`, so the GIL is released
 //! while the request is in flight but callers never see a coroutine.
 
 use std::{collections::HashMap, sync::OnceLock};
@@ -98,7 +98,7 @@ impl PyPkceChallenge {
 }
 
 /// An access/refresh token pair returned by `POST /oauth/token`.
-#[pyclass(name = "TokenSet")]
+#[pyclass(name = "TokenSet", from_py_object)]
 #[derive(Clone)]
 struct PyTokenSet {
     inner: TokenSet,
@@ -178,15 +178,13 @@ impl PyAuthClient {
         code: &str,
         verifier: &str,
     ) -> PyResult<PyTokenSet> {
-        py.allow_threads(|| {
-            runtime().block_on(self.inner.exchange_code(redirect_uri, code, verifier))
-        })
-        .map(|inner| PyTokenSet { inner })
-        .map_err(to_py_err)
+        py.detach(|| runtime().block_on(self.inner.exchange_code(redirect_uri, code, verifier)))
+            .map(|inner| PyTokenSet { inner })
+            .map_err(to_py_err)
     }
 
     fn refresh(&self, py: Python<'_>, refresh_token: &str) -> PyResult<PyTokenSet> {
-        py.allow_threads(|| runtime().block_on(self.inner.refresh(refresh_token)))
+        py.detach(|| runtime().block_on(self.inner.refresh(refresh_token)))
             .map(|inner| PyTokenSet { inner })
             .map_err(to_py_err)
     }
@@ -398,7 +396,7 @@ impl PyScribeClient {
             file_name: file_name.to_string(),
             bytes: bytes.to_vec(),
         };
-        py.allow_threads(|| runtime().block_on(self.inner.create_document(source)))
+        py.detach(|| runtime().block_on(self.inner.create_document(source)))
             .map(|doc| doc.document_id)
             .map_err(to_py_err)
     }
@@ -407,13 +405,13 @@ impl PyScribeClient {
     /// Returns the new document's id.
     fn create_document_from_url(&self, py: Python<'_>, url: &str) -> PyResult<String> {
         let source = DocumentSource::Url(url.to_string());
-        py.allow_threads(|| runtime().block_on(self.inner.create_document(source)))
+        py.detach(|| runtime().block_on(self.inner.create_document(source)))
             .map(|doc| doc.document_id)
             .map_err(to_py_err)
     }
 
     fn list_documents(&self, py: Python<'_>) -> PyResult<Vec<PyDocumentSummary>> {
-        py.allow_threads(|| runtime().block_on(self.inner.list_documents()))
+        py.detach(|| runtime().block_on(self.inner.list_documents()))
             .map(|docs| {
                 docs.into_iter()
                     .map(|inner| PyDocumentSummary { inner })
@@ -423,7 +421,7 @@ impl PyScribeClient {
     }
 
     fn delete_document(&self, py: Python<'_>, document_id: &str) -> PyResult<()> {
-        py.allow_threads(|| runtime().block_on(self.inner.delete_document(document_id)))
+        py.detach(|| runtime().block_on(self.inner.delete_document(document_id)))
             .map_err(to_py_err)
     }
 
@@ -435,13 +433,13 @@ impl PyScribeClient {
         py: Python<'_>,
         document_id: &str,
     ) -> PyResult<PyDocumentChannel> {
-        py.allow_threads(|| runtime().block_on(self.inner.open_document_channel(document_id)))
+        py.detach(|| runtime().block_on(self.inner.open_document_channel(document_id)))
             .map(|inner| PyDocumentChannel { inner: Some(inner) })
             .map_err(to_py_err)
     }
 
     fn list_outputs(&self, py: Python<'_>, document_id: &str) -> PyResult<Vec<PyOutput>> {
-        py.allow_threads(|| runtime().block_on(self.inner.list_outputs(document_id)))
+        py.detach(|| runtime().block_on(self.inner.list_outputs(document_id)))
             .map(|outputs| {
                 outputs
                     .into_iter()
@@ -459,13 +457,13 @@ impl PyScribeClient {
     ) -> PyResult<Bound<'py, PyBytes>> {
         let format = parse_format(format)?;
         let bytes = py
-            .allow_threads(|| runtime().block_on(self.inner.download_output(document_id, format)))
+            .detach(|| runtime().block_on(self.inner.download_output(document_id, format)))
             .map_err(to_py_err)?;
         Ok(PyBytes::new(py, &bytes))
     }
 
     fn get_settings(&self, py: Python<'_>, document_id: &str) -> PyResult<PySettings> {
-        py.allow_threads(|| runtime().block_on(self.inner.get_settings(document_id)))
+        py.detach(|| runtime().block_on(self.inner.get_settings(document_id)))
             .map(|inner| PySettings { inner })
             .map_err(to_py_err)
     }
@@ -477,14 +475,14 @@ impl PyScribeClient {
         settings: &Bound<'_, PyDict>,
     ) -> PyResult<PySettings> {
         let update = dict_to_settings_update(settings)?;
-        py.allow_threads(|| runtime().block_on(self.inner.update_settings(document_id, &update)))
+        py.detach(|| runtime().block_on(self.inner.update_settings(document_id, &update)))
             .map(|inner| PySettings { inner })
             .map_err(to_py_err)
     }
 
     /// Lists every language available for TTS narration, as `(name, code)` pairs.
     fn languages(&self, py: Python<'_>) -> PyResult<Vec<(String, String)>> {
-        py.allow_threads(|| runtime().block_on(self.inner.languages()))
+        py.detach(|| runtime().block_on(self.inner.languages()))
             .map(|langs| langs.into_iter().map(|l| (l.0, l.1)).collect())
             .map_err(to_py_err)
     }
@@ -492,7 +490,7 @@ impl PyScribeClient {
     /// Lists every dialect available for TTS narration, keyed by language
     /// code, each as a `(name, locale)` pair.
     fn dialects(&self, py: Python<'_>) -> PyResult<HashMap<String, Vec<(String, String)>>> {
-        py.allow_threads(|| runtime().block_on(self.inner.dialects()))
+        py.detach(|| runtime().block_on(self.inner.dialects()))
             .map(|map| {
                 map.into_iter()
                     .map(|(k, v)| (k, v.into_iter().map(|d| (d.0, d.1)).collect()))
@@ -504,7 +502,7 @@ impl PyScribeClient {
     /// Lists every Braille translation table available for `brf` output, as
     /// `(name, table_id)` pairs.
     fn braille_tables(&self, py: Python<'_>) -> PyResult<Vec<(String, String)>> {
-        py.allow_threads(|| runtime().block_on(self.inner.braille_tables()))
+        py.detach(|| runtime().block_on(self.inner.braille_tables()))
             .map(|tables| tables.into_iter().map(|t| (t.0, t.1)).collect())
             .map_err(to_py_err)
     }
@@ -512,7 +510,7 @@ impl PyScribeClient {
     /// Lists every TTS voice available, keyed by dialect locale, each as a
     /// `(name, voice_short_name, has_sample)` triple.
     fn voices(&self, py: Python<'_>) -> PyResult<VoicesByDialect> {
-        py.allow_threads(|| runtime().block_on(self.inner.voices()))
+        py.detach(|| runtime().block_on(self.inner.voices()))
             .map(|map| {
                 map.into_iter()
                     .map(|(k, v)| {
@@ -551,7 +549,7 @@ impl PyDocumentChannel {
     fn start_conversion(&mut self, py: Python<'_>, format: &str) -> PyResult<String> {
         let format = parse_format(format)?;
         let channel = self.inner.as_mut().ok_or_else(channel_closed_err)?;
-        py.allow_threads(|| runtime().block_on(channel.start_conversion(format)))
+        py.detach(|| runtime().block_on(channel.start_conversion(format)))
             .map_err(to_py_err)
     }
 
@@ -562,7 +560,7 @@ impl PyDocumentChannel {
     fn next_event<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let channel = self.inner.as_mut().ok_or_else(channel_closed_err)?;
         let event = py
-            .allow_threads(|| runtime().block_on(channel.next_event()))
+            .detach(|| runtime().block_on(channel.next_event()))
             .map_err(to_py_err)?;
         pythonize::pythonize(py, &event).map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -570,7 +568,7 @@ impl PyDocumentChannel {
     /// Leaves the channel and closes the underlying connection. Safe to call more than once.
     fn close(&mut self, py: Python<'_>) -> PyResult<()> {
         if let Some(channel) = self.inner.take() {
-            py.allow_threads(|| runtime().block_on(channel.close()))
+            py.detach(|| runtime().block_on(channel.close()))
                 .map_err(to_py_err)?;
         }
         Ok(())
