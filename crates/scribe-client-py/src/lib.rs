@@ -250,8 +250,8 @@ impl PyDocumentSummary {
     }
 
     #[getter]
-    fn title(&self) -> &str {
-        &self.inner.title
+    fn title(&self) -> Option<&str> {
+        self.inner.title.as_deref()
     }
 
     #[getter]

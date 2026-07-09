@@ -69,6 +69,31 @@ def test_list_documents_parses_documents_with_embedded_outputs(mock_server):
     assert documents[0].outputs[0].format == "html_stream"
 
 
+def test_list_documents_handles_a_null_title(mock_server):
+    # A URL-sourced document has no title until the converter determines
+    # one; the server returns `"title": null` for it.
+    mock_server.add_json_route(
+        "GET",
+        "/api/documents",
+        200,
+        {
+            "documents": [
+                {
+                    "id": "doc-1",
+                    "title": None,
+                    "page_count": None,
+                    "inserted_at": "2026-07-09T13:19:30.000000Z",
+                    "outputs": [],
+                }
+            ]
+        },
+    )
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    documents = client.list_documents()
+
+    assert documents[0].title is None
+
+
 def test_delete_document_succeeds_on_204(mock_server):
     mock_server.add_empty_route("DELETE", "/api/documents/doc-1", 204)
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())

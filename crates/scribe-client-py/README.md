@@ -73,6 +73,8 @@ the account is out of page credits for a full conversion.
 ```python
 documents = client.list_documents()
 for doc in documents:
+    # doc.title and doc.page_count are None until the server has
+    # determined them (e.g. briefly, for a URL-sourced document).
     print(doc.id, doc.title, doc.page_count, doc.inserted_at)
     for output in doc.outputs:
         print(" ", output.format, output.stage, output.progress)

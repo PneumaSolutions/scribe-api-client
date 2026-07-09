@@ -333,10 +333,38 @@ async fn list_documents_parses_documents_with_embedded_outputs() {
     let documents = client.list_documents().await.unwrap();
     assert_eq!(documents.len(), 1);
     assert_eq!(documents[0].id, "doc-1");
-    assert_eq!(documents[0].title, "Report");
+    assert_eq!(documents[0].title.as_deref(), Some("Report"));
     assert_eq!(documents[0].page_count, Some(3));
     assert_eq!(documents[0].outputs.len(), 1);
     assert_eq!(documents[0].outputs[0].format, OutputFormat::HtmlStream);
+}
+
+#[tokio::test]
+async fn list_documents_handles_a_null_title() {
+    // A URL-sourced document has no title until the converter determines
+    // one; the server returns `"title": null` for it.
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/documents"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "documents": [
+                {
+                    "id": "doc-1",
+                    "title": null,
+                    "page_count": null,
+                    "inserted_at": "2026-07-09T13:19:30.000000Z",
+                    "outputs": []
+                }
+            ]
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server, valid_tokens());
+    let documents = client.list_documents().await.unwrap();
+
+    assert_eq!(documents[0].title, None);
 }
 
 #[tokio::test]

@@ -241,7 +241,7 @@ impl From<scribe_client_core::Output> for Output {
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct DocumentSummary {
     pub id: String,
-    pub title: String,
+    pub title: Option<String>,
     pub page_count: Option<i64>,
     /// ISO 8601 UTC timestamp of when the document was created.
     pub inserted_at: String,

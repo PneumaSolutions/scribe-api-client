@@ -107,7 +107,9 @@ pub(crate) struct OutputListResponse {
 #[derive(Debug, Clone, Deserialize)]
 pub struct DocumentSummary {
     pub id: String,
-    pub title: String,
+    /// `None` if the document hasn't been titled yet (e.g. a URL-sourced
+    /// document before the converter has determined one).
+    pub title: Option<String>,
     pub page_count: Option<i64>,
     /// ISO 8601 UTC timestamp of when the document was created.
     pub inserted_at: String,
