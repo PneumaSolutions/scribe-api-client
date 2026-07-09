@@ -4,7 +4,6 @@ members = [
     "crates/scribe-client",
     "crates/scribe-client-py",
     "crates/scribe-client-ffi",
-    "crates/uniffi-bindgen",
 ]
 
 [workspace.package]

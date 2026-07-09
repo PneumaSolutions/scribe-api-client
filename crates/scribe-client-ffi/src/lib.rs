@@ -696,9 +696,9 @@ fn channel_closed_err() -> ScribeError {
 /// start converting a format other than the `html_stream` preview that
 /// document creation already starts.
 ///
-/// UniFFI objects are shared across the FFI boundary (`Arc<Self>`), so the
+/// `UniFFI` objects are shared across the FFI boundary (`Arc<Self>`), so the
 /// underlying [`DocumentChannel`] (whose methods need exclusive access to
-/// its WebSocket connection) is guarded by a mutex rather than held by
+/// its `WebSocket` connection) is guarded by a mutex rather than held by
 /// value.
 #[derive(uniffi::Object)]
 pub struct FfiDocumentChannel {
@@ -711,6 +711,15 @@ impl FfiDocumentChannel {
     /// current settings. Idempotent: if that format is already converting
     /// or complete, returns its existing output id. Returns immediately;
     /// progress arrives via subsequent [`Self::next_event`] calls.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::ConversionInProgress`] if a different
+    /// non-preview conversion is already running,
+    /// [`ScribeError::RateLimited`] if too many conversions were started
+    /// too quickly, [`ScribeError::NeedsPurchase`] if the account is out
+    /// of page credits, or [`ScribeError::ChannelClosed`] if the channel
+    /// was already closed.
     pub fn start_conversion(&self, format: OutputFormat) -> Result<String, ScribeError> {
         let mut guard = self
             .inner
@@ -723,6 +732,11 @@ impl FfiDocumentChannel {
     }
 
     /// Blocks until the next asynchronous event arrives on this channel.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::ChannelClosed`] if the channel is already
+    /// closed, or closes before another event arrives.
     pub fn next_event(&self) -> Result<ChannelEvent, ScribeError> {
         let mut guard = self
             .inner
@@ -737,6 +751,10 @@ impl FfiDocumentChannel {
 
     /// Leaves the channel and closes the underlying connection. Safe to
     /// call more than once.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if sending the close frame fails.
     pub fn close(&self) -> Result<(), ScribeError> {
         let mut guard = self
             .inner

@@ -10,6 +10,14 @@ description = "UniFFI bindings for the Scribe API client (iOS / Android)"
 crate-type = ["staticlib", "cdylib", "lib"]
 name = "scribe_client_ffi"
 
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["uniffi-cli"]
+
+[features]
+uniffi-cli = ["uniffi/cli"]
+
 [lints]
 workspace = true
 

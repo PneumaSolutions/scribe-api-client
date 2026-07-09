@@ -42,7 +42,7 @@ SWIFT_BINDINGS_SRC="$OUTPUT_DIR/uniffi-swift"
 
 echo "==> Generating Swift bindings..."
 mkdir -p "$HEADERS_DIR" "$SWIFT_BINDINGS_SRC"
-cargo run -p uniffi-bindgen -- generate \
+cargo run -p "$CRATE" --bin uniffi-bindgen --features uniffi-cli -- generate \
     --library "$DEVICE_LIB" \
     --language swift \
     --out-dir "$SWIFT_BINDINGS_SRC"
