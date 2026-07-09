@@ -7,7 +7,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use reqwest::Client;
@@ -16,13 +16,12 @@ use tokio::runtime::Runtime;
 use url::Url;
 
 use scribe_client_core::{
-    AuthClient, DocumentSource, OutputFormat as CoreOutputFormat, ScribeClient,
-    SettingsUpdate as CoreSettingsUpdate, Stage as CoreStage,
+    AuthClient, ChannelEvent as CoreChannelEvent, DocumentChannel, DocumentSource,
+    OutputFormat as CoreOutputFormat, ScribeClient, SettingsUpdate as CoreSettingsUpdate,
+    Stage as CoreStage,
 };
 
 uniffi::setup_scaffolding!();
-
-// ── runtime ──────────────────────────────────────────────────────────────────
 
 fn runtime() -> &'static Runtime {
     static RT: OnceLock<Runtime> = OnceLock::new();
@@ -33,28 +32,28 @@ fn http_client() -> Client {
     Client::new()
 }
 
-// ── error ─────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum ScribeError {
     #[error("request failed: {message}")]
     Http { message: String },
-
     #[error("{status}: {error}")]
     Api { status: u16, error: String },
-
     #[error("invalid_grant: {message}")]
     InvalidGrant { message: String },
-
     #[error("conversion not complete")]
     ConversionNotComplete,
-
     #[error("not found")]
     NotFound,
-
     #[error("forbidden")]
     Forbidden,
-
+    #[error("a conversion is already in progress for this document")]
+    ConversionInProgress,
+    #[error("rate limited, try again shortly")]
+    RateLimited,
+    #[error("insufficient page credits; purchase more at {purchase_url}")]
+    NeedsPurchase { purchase_url: String },
+    #[error("channel closed before a reply arrived")]
+    ChannelClosed,
     #[error("{message}")]
     Other { message: String },
 }
@@ -78,13 +77,16 @@ impl From<scribe_client_core::ScribeError> for ScribeError {
             scribe_client_core::ScribeError::ConversionNotComplete => Self::ConversionNotComplete,
             scribe_client_core::ScribeError::NotFound => Self::NotFound,
             scribe_client_core::ScribeError::Forbidden => Self::Forbidden,
-            // The document channel (WebSocket) isn't exposed over UniFFI yet;
-            // these all come from that surface, so fall back to a message.
+            scribe_client_core::ScribeError::ConversionInProgress => Self::ConversionInProgress,
+            scribe_client_core::ScribeError::RateLimited => Self::RateLimited,
+            scribe_client_core::ScribeError::NeedsPurchase { purchase_url } => {
+                Self::NeedsPurchase { purchase_url }
+            }
+            scribe_client_core::ScribeError::ChannelClosed => Self::ChannelClosed,
+            // Transport-level failures rather than a business-meaningful
+            // condition the app would branch on; fall back to a message,
+            // same as the Python bindings do for these.
             other @ (scribe_client_core::ScribeError::WebSocket(_)
-            | scribe_client_core::ScribeError::ChannelClosed
-            | scribe_client_core::ScribeError::ConversionInProgress
-            | scribe_client_core::ScribeError::RateLimited
-            | scribe_client_core::ScribeError::NeedsPurchase { .. }
             | scribe_client_core::ScribeError::Channel(_)) => Self::Other {
                 message: other.to_string(),
             },
@@ -97,8 +99,6 @@ fn parse_url(raw: &str) -> Result<Url, ScribeError> {
         message: format!("invalid URL {raw:?}: {e}"),
     })
 }
-
-// ── enums ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum OutputFormat {
@@ -168,8 +168,6 @@ impl From<CoreStage> for Stage {
         }
     }
 }
-
-// ── records ───────────────────────────────────────────────────────────────────
 
 /// An OAuth 2.0 token pair. `expires_at_unix_secs` is a Unix timestamp (seconds
 /// since epoch) when the access token expires, or `None` if the server didn't
@@ -266,9 +264,7 @@ impl From<scribe_client_core::DocumentSummary> for DocumentSummary {
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Settings {
     pub language: Option<String>,
-    /// JSON-encoded dialect selection map.
     pub dialects_json: String,
-    /// JSON-encoded voice selection map.
     pub voices_json: String,
     pub tts_gender: Option<String>,
     pub tts_rate: f64,
@@ -364,7 +360,49 @@ pub struct Voice {
     pub has_sample: bool,
 }
 
-// ── free functions ────────────────────────────────────────────────────────────
+/// An asynchronous event pushed over a [`FfiDocumentChannel`], outside of a
+/// direct reply to something the app sent.
+#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+pub enum ChannelEvent {
+    /// A conversion's stage or progress changed.
+    Status {
+        format: OutputFormat,
+        stage: Stage,
+        progress: f64,
+    },
+    /// A chunk of streamed HTML content. Only sent for the `html_stream`
+    /// format while it's still converting.
+    Chunk { content: String },
+    /// A format finished converting.
+    ConversionComplete { format: OutputFormat, output_id: String },
+    /// The server reported an error unrelated to a specific request the
+    /// app made (e.g. a conversion failed after it had already started).
+    Error { reason: String },
+}
+
+impl From<CoreChannelEvent> for ChannelEvent {
+    fn from(e: CoreChannelEvent) -> Self {
+        match e {
+            CoreChannelEvent::Status {
+                format,
+                stage,
+                progress,
+            } => Self::Status {
+                format: format.into(),
+                stage: stage.into(),
+                progress,
+            },
+            CoreChannelEvent::Chunk { content } => Self::Chunk { content },
+            CoreChannelEvent::ConversionComplete { format, output_id } => {
+                Self::ConversionComplete {
+                    format: format.into(),
+                    output_id,
+                }
+            }
+            CoreChannelEvent::Error { reason } => Self::Error { reason },
+        }
+    }
+}
 
 /// Generates a fresh PKCE verifier/challenge pair (RFC 7636, S256 method).
 #[uniffi::export]
@@ -375,8 +413,6 @@ pub fn generate_pkce_session() -> PkceSession {
         challenge: pkce.challenge().to_string(),
     }
 }
-
-// ── AuthClient ────────────────────────────────────────────────────────────────
 
 /// Drives the OAuth 2.0 Authorization Code + PKCE flow. Does not open a
 /// browser or handle the redirect; the app is responsible for presenting the
@@ -444,8 +480,6 @@ impl FfiAuthClient {
     }
 }
 
-// ── ScribeClient ──────────────────────────────────────────────────────────────
-
 /// A client for the document-conversion endpoints. Holds a token set and
 /// refreshes it automatically. Call [`FfiScribeClient::current_tokens`] after
 /// any operation to persist the potentially-refreshed token set.
@@ -476,7 +510,6 @@ impl FfiScribeClient {
         runtime().block_on(self.inner.current_tokens()).into()
     }
 
-    /// Uploads a document from raw bytes. Returns the new document's id.
     pub fn create_document_from_file(
         &self,
         file_name: String,
@@ -491,7 +524,6 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    /// Creates a document by having the server fetch it from `url`.
     pub fn create_document_from_url(&self, url: String) -> Result<CreatedDocument, ScribeError> {
         let source = DocumentSource::Url(url);
         runtime()
@@ -502,8 +534,6 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    /// Lists every document owned by the current user, each with its
-    /// outputs embedded.
     pub fn list_documents(&self) -> Result<Vec<DocumentSummary>, ScribeError> {
         runtime()
             .block_on(self.inner.list_documents())
@@ -511,14 +541,35 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    /// Permanently deletes a document and all of its outputs.
     pub fn delete_document(&self, document_id: String) -> Result<(), ScribeError> {
         runtime()
             .block_on(self.inner.delete_document(&document_id))
             .map_err(Into::into)
     }
 
-    /// Lists every output (in-progress and completed) for a document.
+    /// Opens a real-time channel for `document_id`. This is the only way
+    /// to start converting a format other than the `html_stream` preview
+    /// that document creation already starts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
+    /// document doesn't exist or isn't owned by the caller, or an error if
+    /// the connection fails.
+    pub fn open_document_channel(
+        &self,
+        document_id: String,
+    ) -> Result<Arc<FfiDocumentChannel>, ScribeError> {
+        runtime()
+            .block_on(self.inner.open_document_channel(&document_id))
+            .map(|inner| {
+                Arc::new(FfiDocumentChannel {
+                    inner: Mutex::new(Some(inner)),
+                })
+            })
+            .map_err(Into::into)
+    }
+
     pub fn list_outputs(&self, document_id: String) -> Result<Vec<Output>, ScribeError> {
         runtime()
             .block_on(self.inner.list_outputs(&document_id))
@@ -538,7 +589,6 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    /// Fetches a document's current conversion settings.
     pub fn get_settings(&self, document_id: String) -> Result<Settings, ScribeError> {
         runtime()
             .block_on(self.inner.get_settings(&document_id))
@@ -546,7 +596,6 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    /// Applies a partial settings update.
     pub fn update_settings(
         &self,
         document_id: String,
@@ -558,14 +607,6 @@ impl FfiScribeClient {
             .map(Into::into)
             .map_err(Into::into)
     }
-
-    // NOTE: starting a conversion for a format other than the `html_stream`
-    // preview now happens exclusively over the document channel (a
-    // WebSocket), not this REST-backed create_output call — the server
-    // removed that endpoint so it can guarantee the channel is subscribed
-    // to whatever it just started converting. `scribe-client-py` exposes
-    // this via `ScribeClient.open_document_channel()`; UniFFI/iOS bindings
-    // for it aren't implemented yet.
 
     /// Lists every language available for TTS narration.
     pub fn languages(&self) -> Result<Vec<Language>, ScribeError> {
@@ -640,5 +681,59 @@ impl FfiScribeClient {
                     .collect()
             })
             .map_err(Into::into)
+    }
+}
+
+fn channel_closed_err() -> ScribeError {
+    ScribeError::ChannelClosed
+}
+
+/// A live connection to a document's real-time channel, obtained from
+/// [`FfiScribeClient::open_document_channel`]. This is the only way to
+/// start converting a format other than the `html_stream` preview that
+/// document creation already starts.
+///
+/// UniFFI objects are shared across the FFI boundary (`Arc<Self>`), so the
+/// underlying [`DocumentChannel`] (whose methods need exclusive access to
+/// its WebSocket connection) is guarded by a mutex rather than held by
+/// value.
+#[derive(uniffi::Object)]
+pub struct FfiDocumentChannel {
+    inner: Mutex<Option<DocumentChannel>>,
+}
+
+#[uniffi::export]
+impl FfiDocumentChannel {
+    /// Starts converting the joined document to `format`, using its
+    /// current settings. Idempotent: if that format is already converting
+    /// or complete, returns its existing output id. Returns immediately;
+    /// progress arrives via subsequent [`Self::next_event`] calls.
+    pub fn start_conversion(&self, format: OutputFormat) -> Result<String, ScribeError> {
+        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let channel = guard.as_mut().ok_or_else(channel_closed_err)?;
+        runtime()
+            .block_on(channel.start_conversion(format.into()))
+            .map_err(Into::into)
+    }
+
+    /// Blocks until the next asynchronous event arrives on this channel.
+    pub fn next_event(&self) -> Result<ChannelEvent, ScribeError> {
+        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let channel = guard.as_mut().ok_or_else(channel_closed_err)?;
+        runtime()
+            .block_on(channel.next_event())
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    /// Leaves the channel and closes the underlying connection. Safe to
+    /// call more than once.
+    pub fn close(&self) -> Result<(), ScribeError> {
+        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(channel) = guard.take() {
+            runtime().block_on(channel.close()).map_err(Into::into)
+        } else {
+            Ok(())
+        }
     }
 }

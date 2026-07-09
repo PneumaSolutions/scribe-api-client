@@ -7,7 +7,7 @@ repository.workspace = true
 description = "UniFFI bindings for the Scribe API client (iOS / Android)"
 
 [lib]
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["staticlib", "cdylib", "lib"]
 name = "scribe_client_ffi"
 
 [lints]
@@ -22,3 +22,8 @@ thiserror = "1"
 time = "0.3"
 url = "2"
 serde_json = "1"
+
+[dev-dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
