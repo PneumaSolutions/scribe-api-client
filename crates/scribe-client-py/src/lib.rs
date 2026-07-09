@@ -160,7 +160,6 @@ impl PyAuthClient {
     fn new(base_url: &str, client_id: &str) -> PyResult<Self> {
         let base_url = parse_url(base_url)?;
         let http = reqwest::Client::new();
-
         Ok(PyAuthClient {
             inner: AuthClient::new(http, base_url, client_id.to_string()),
         })
@@ -365,7 +364,6 @@ type VoicesByDialect = HashMap<String, Vec<(String, String, bool)>>;
 fn dict_to_settings_update(dict: &Bound<'_, PyDict>) -> PyResult<SettingsUpdate> {
     let value: serde_json::Value =
         pythonize::depythonize(dict).map_err(|e| PyValueError::new_err(e.to_string()))?;
-
     serde_json::from_value(value).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
@@ -382,7 +380,6 @@ impl PyScribeClient {
     fn new(base_url: &str, client_id: &str, tokens: PyTokenSet) -> PyResult<Self> {
         let base_url = parse_url(base_url)?;
         let http = reqwest::Client::new();
-
         Ok(PyScribeClient {
             inner: ScribeClient::new(http, base_url, client_id.to_string(), tokens.inner),
         })
@@ -401,7 +398,6 @@ impl PyScribeClient {
             file_name: file_name.to_string(),
             bytes: bytes.to_vec(),
         };
-
         py.allow_threads(|| runtime().block_on(self.inner.create_document(source)))
             .map(|doc| doc.document_id)
             .map_err(to_py_err)
@@ -411,14 +407,11 @@ impl PyScribeClient {
     /// Returns the new document's id.
     fn create_document_from_url(&self, py: Python<'_>, url: &str) -> PyResult<String> {
         let source = DocumentSource::Url(url.to_string());
-
         py.allow_threads(|| runtime().block_on(self.inner.create_document(source)))
             .map(|doc| doc.document_id)
             .map_err(to_py_err)
     }
 
-    /// Lists every document owned by the current user, each with its
-    /// outputs embedded.
     fn list_documents(&self, py: Python<'_>) -> PyResult<Vec<PyDocumentSummary>> {
         py.allow_threads(|| runtime().block_on(self.inner.list_documents()))
             .map(|docs| {
@@ -429,7 +422,6 @@ impl PyScribeClient {
             .map_err(to_py_err)
     }
 
-    /// Permanently deletes a document and all of its outputs.
     fn delete_document(&self, py: Python<'_>, document_id: &str) -> PyResult<()> {
         py.allow_threads(|| runtime().block_on(self.inner.delete_document(document_id)))
             .map_err(to_py_err)
@@ -448,7 +440,6 @@ impl PyScribeClient {
             .map_err(to_py_err)
     }
 
-    /// Lists every output (in-progress and completed) for a document.
     fn list_outputs(&self, py: Python<'_>, document_id: &str) -> PyResult<Vec<PyOutput>> {
         py.allow_threads(|| runtime().block_on(self.inner.list_outputs(document_id)))
             .map(|outputs| {
@@ -460,9 +451,6 @@ impl PyScribeClient {
             .map_err(to_py_err)
     }
 
-    /// Downloads the bytes of a completed output. Raises
-    /// `ConversionNotCompleteError` if that format hasn't finished
-    /// converting yet.
     fn download_output<'py>(
         &self,
         py: Python<'py>,
@@ -470,23 +458,18 @@ impl PyScribeClient {
         format: &str,
     ) -> PyResult<Bound<'py, PyBytes>> {
         let format = parse_format(format)?;
-
         let bytes = py
             .allow_threads(|| runtime().block_on(self.inner.download_output(document_id, format)))
             .map_err(to_py_err)?;
-
         Ok(PyBytes::new(py, &bytes))
     }
 
-    /// Fetches a document's current conversion settings.
     fn get_settings(&self, py: Python<'_>, document_id: &str) -> PyResult<PySettings> {
         py.allow_threads(|| runtime().block_on(self.inner.get_settings(document_id)))
             .map(|inner| PySettings { inner })
             .map_err(to_py_err)
     }
 
-    /// Applies a partial update to a document's conversion settings. Only
-    /// the keys present in `settings` are changed.
     fn update_settings(
         &self,
         py: Python<'_>,
@@ -494,14 +477,12 @@ impl PyScribeClient {
         settings: &Bound<'_, PyDict>,
     ) -> PyResult<PySettings> {
         let update = dict_to_settings_update(settings)?;
-
         py.allow_threads(|| runtime().block_on(self.inner.update_settings(document_id, &update)))
             .map(|inner| PySettings { inner })
             .map_err(to_py_err)
     }
 
-    /// Lists every language available for TTS narration, as `(name, code)`
-    /// pairs.
+    /// Lists every language available for TTS narration, as `(name, code)` pairs.
     fn languages(&self, py: Python<'_>) -> PyResult<Vec<(String, String)>> {
         py.allow_threads(|| runtime().block_on(self.inner.languages()))
             .map(|langs| langs.into_iter().map(|l| (l.0, l.1)).collect())
@@ -570,7 +551,6 @@ impl PyDocumentChannel {
     fn start_conversion(&mut self, py: Python<'_>, format: &str) -> PyResult<String> {
         let format = parse_format(format)?;
         let channel = self.inner.as_mut().ok_or_else(channel_closed_err)?;
-
         py.allow_threads(|| runtime().block_on(channel.start_conversion(format)))
             .map_err(to_py_err)
     }
@@ -581,22 +561,18 @@ impl PyDocumentChannel {
     /// keys depend on the type (see the module documentation).
     fn next_event<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let channel = self.inner.as_mut().ok_or_else(channel_closed_err)?;
-
         let event = py
             .allow_threads(|| runtime().block_on(channel.next_event()))
             .map_err(to_py_err)?;
-
         pythonize::pythonize(py, &event).map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
-    /// Leaves the channel and closes the underlying connection. Safe to
-    /// call more than once.
+    /// Leaves the channel and closes the underlying connection. Safe to call more than once.
     fn close(&mut self, py: Python<'_>) -> PyResult<()> {
         if let Some(channel) = self.inner.take() {
             py.allow_threads(|| runtime().block_on(channel.close()))
                 .map_err(to_py_err)?;
         }
-
         Ok(())
     }
 }
@@ -611,7 +587,6 @@ fn scribe_client(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySettings>()?;
     m.add_class::<PyScribeClient>()?;
     m.add_class::<PyDocumentChannel>()?;
-
     m.add("ScribeApiError", py.get_type::<ScribeApiError>())?;
     m.add("InvalidGrantError", py.get_type::<InvalidGrantError>())?;
     m.add("NotFoundError", py.get_type::<NotFoundError>())?;
@@ -626,6 +601,5 @@ fn scribe_client(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     m.add("RateLimitedError", py.get_type::<RateLimitedError>())?;
     m.add("NeedsPurchaseError", py.get_type::<NeedsPurchaseError>())?;
-
     Ok(())
 }

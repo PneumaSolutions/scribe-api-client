@@ -374,7 +374,10 @@ pub enum ChannelEvent {
     /// format while it's still converting.
     Chunk { content: String },
     /// A format finished converting.
-    ConversionComplete { format: OutputFormat, output_id: String },
+    ConversionComplete {
+        format: OutputFormat,
+        output_id: String,
+    },
     /// The server reported an error unrelated to a specific request the
     /// app made (e.g. a conversion failed after it had already started).
     Error { reason: String },
@@ -709,7 +712,10 @@ impl FfiDocumentChannel {
     /// or complete, returns its existing output id. Returns immediately;
     /// progress arrives via subsequent [`Self::next_event`] calls.
     pub fn start_conversion(&self, format: OutputFormat) -> Result<String, ScribeError> {
-        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let channel = guard.as_mut().ok_or_else(channel_closed_err)?;
         runtime()
             .block_on(channel.start_conversion(format.into()))
@@ -718,7 +724,10 @@ impl FfiDocumentChannel {
 
     /// Blocks until the next asynchronous event arrives on this channel.
     pub fn next_event(&self) -> Result<ChannelEvent, ScribeError> {
-        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let channel = guard.as_mut().ok_or_else(channel_closed_err)?;
         runtime()
             .block_on(channel.next_event())
@@ -729,7 +738,10 @@ impl FfiDocumentChannel {
     /// Leaves the channel and closes the underlying connection. Safe to
     /// call more than once.
     pub fn close(&self) -> Result<(), ScribeError> {
-        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(channel) = guard.take() {
             runtime().block_on(channel.close()).map_err(Into::into)
         } else {
