@@ -16,9 +16,9 @@ use tokio::runtime::Runtime;
 use url::Url;
 
 use scribe_client_core::{
-    AuthClient, ChannelEvent as CoreChannelEvent, DocumentChannel, DocumentSource,
-    OutputFormat as CoreOutputFormat, ScribeClient, SettingsUpdate as CoreSettingsUpdate,
-    Stage as CoreStage,
+    AccountInfo as CoreAccountInfo, AuthClient, ChannelEvent as CoreChannelEvent, DocumentChannel,
+    DocumentSource, OutputFormat as CoreOutputFormat, ScribeClient,
+    SettingsUpdate as CoreSettingsUpdate, Stage as CoreStage,
 };
 
 uniffi::setup_scaffolding!();
@@ -212,6 +212,19 @@ pub struct PkceSession {
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct CreatedDocument {
     pub document_id: String,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct AccountInfo {
+    pub pages_remaining: i64,
+}
+
+impl From<CoreAccountInfo> for AccountInfo {
+    fn from(a: CoreAccountInfo) -> Self {
+        Self {
+            pages_remaining: a.pages_remaining,
+        }
+    }
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -547,6 +560,23 @@ impl FfiScribeClient {
     pub fn delete_document(&self, document_id: String) -> Result<(), ScribeError> {
         runtime()
             .block_on(self.inner.delete_document(&document_id))
+            .map_err(Into::into)
+    }
+
+    pub fn get_account_info(&self) -> Result<AccountInfo, ScribeError> {
+        runtime()
+            .block_on(self.inner.get_account_info())
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn submit_document_feedback(
+        &self,
+        document_id: String,
+        comment: String,
+    ) -> Result<(), ScribeError> {
+        runtime()
+            .block_on(self.inner.submit_document_feedback(&document_id, &comment))
             .map_err(Into::into)
     }
 

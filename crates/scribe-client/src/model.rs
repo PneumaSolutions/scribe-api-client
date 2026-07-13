@@ -103,6 +103,12 @@ pub(crate) struct OutputListResponse {
     pub outputs: Vec<Output>,
 }
 
+/// Response body of `GET /api/account`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AccountInfo {
+    pub pages_remaining: i64,
+}
+
 /// One row from `GET /api/documents`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DocumentSummary {

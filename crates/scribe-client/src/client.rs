@@ -10,9 +10,9 @@ use crate::{
     channel::DocumentChannel,
     error::ScribeError,
     model::{
-        BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect, DialectsResponse,
-        DocumentListResponse, DocumentSummary, Language, LanguagesResponse, Output, OutputFormat,
-        OutputListResponse, Settings, SettingsUpdate, Voice, VoicesResponse,
+        AccountInfo, BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect,
+        DialectsResponse, DocumentListResponse, DocumentSummary, Language, LanguagesResponse,
+        Output, OutputFormat, OutputListResponse, Settings, SettingsUpdate, Voice, VoicesResponse,
     },
 };
 
@@ -159,6 +159,37 @@ impl ScribeClient {
             .error_for_status_or_json_error()
             .await?;
 
+        Ok(())
+    }
+
+    /// Returns account-level info for the authenticated user, including
+    /// how many page credits remain.
+    pub async fn get_account_info(&self) -> Result<AccountInfo, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/account");
+        self.with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await
+    }
+
+    /// Submits a document for human review, attaching `comment` as the
+    /// reason / description of the problem.
+    pub async fn submit_document_feedback(
+        &self,
+        document_id: &str,
+        comment: &str,
+    ) -> Result<(), ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path(&format!("/api/documents/{document_id}/feedback"));
+        let body = serde_json::json!({ "comment": comment });
+        let token = self.access_token().await?;
+        self.http
+            .post(url)
+            .bearer_auth(&token)
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status_or_json_error()
+            .await?;
         Ok(())
     }
 
