@@ -16,9 +16,9 @@ use tokio::runtime::Runtime;
 use url::Url;
 
 use scribe_client_core::{
-    AccountInfo as CoreAccountInfo, AuthClient, ChannelEvent as CoreChannelEvent, DocumentChannel,
-    DocumentSource, OutputFormat as CoreOutputFormat, ScribeClient,
-    SettingsUpdate as CoreSettingsUpdate, Stage as CoreStage,
+    AuthClient, ChannelEvent as CoreChannelEvent, DocumentChannel, DocumentSource,
+    OutputFormat as CoreOutputFormat, ScribeClient, SettingsUpdate as CoreSettingsUpdate,
+    Stage as CoreStage,
 };
 
 uniffi::setup_scaffolding!();
@@ -215,19 +215,6 @@ pub struct CreatedDocument {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
-pub struct AccountInfo {
-    pub pages_remaining: i64,
-}
-
-impl From<CoreAccountInfo> for AccountInfo {
-    fn from(a: CoreAccountInfo) -> Self {
-        Self {
-            pages_remaining: a.pages_remaining,
-        }
-    }
-}
-
-#[derive(Debug, Clone, uniffi::Record)]
 pub struct Output {
     pub format: OutputFormat,
     pub stage: Stage,
@@ -246,6 +233,13 @@ impl From<scribe_client_core::Output> for Output {
             is_preview: o.is_preview,
         }
     }
+}
+
+/// The result of `list_documents()`, including the caller's page credit balance.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DocumentList {
+    pub documents: Vec<DocumentSummary>,
+    pub pages_remaining: Option<i64>,
 }
 
 /// One row from `list_documents()`.
@@ -550,23 +544,19 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    pub fn list_documents(&self) -> Result<Vec<DocumentSummary>, ScribeError> {
+    pub fn list_documents(&self) -> Result<DocumentList, ScribeError> {
         runtime()
             .block_on(self.inner.list_documents())
-            .map(|docs| docs.into_iter().map(Into::into).collect())
+            .map(|dl| DocumentList {
+                documents: dl.documents.into_iter().map(Into::into).collect(),
+                pages_remaining: dl.pages_remaining,
+            })
             .map_err(Into::into)
     }
 
     pub fn delete_document(&self, document_id: String) -> Result<(), ScribeError> {
         runtime()
             .block_on(self.inner.delete_document(&document_id))
-            .map_err(Into::into)
-    }
-
-    pub fn get_account_info(&self) -> Result<AccountInfo, ScribeError> {
-        runtime()
-            .block_on(self.inner.get_account_info())
-            .map(Into::into)
             .map_err(Into::into)
     }
 

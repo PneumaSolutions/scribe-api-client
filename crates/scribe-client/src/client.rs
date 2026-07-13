@@ -10,9 +10,9 @@ use crate::{
     channel::DocumentChannel,
     error::ScribeError,
     model::{
-        AccountInfo, BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect,
-        DialectsResponse, DocumentListResponse, DocumentSummary, Language, LanguagesResponse,
-        Output, OutputFormat, OutputListResponse, Settings, SettingsUpdate, Voice, VoicesResponse,
+        BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect, DialectsResponse,
+        DocumentList, DocumentListResponse, DocumentSummary, Language, LanguagesResponse, Output,
+        OutputFormat, OutputListResponse, Settings, SettingsUpdate, Voice, VoicesResponse,
     },
 };
 
@@ -128,7 +128,7 @@ impl ScribeClient {
     /// # Errors
     ///
     /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
-    pub async fn list_documents(&self) -> Result<Vec<DocumentSummary>, ScribeError> {
+    pub async fn list_documents(&self) -> Result<DocumentList, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path("/api/documents");
 
@@ -136,7 +136,10 @@ impl ScribeClient {
             .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
             .await?;
 
-        Ok(response.documents)
+        Ok(DocumentList {
+            documents: response.documents,
+            pages_remaining: response.pages_remaining,
+        })
     }
 
     /// Permanently deletes a document and all of its outputs.
@@ -160,15 +163,6 @@ impl ScribeClient {
             .await?;
 
         Ok(())
-    }
-
-    /// Returns account-level info for the authenticated user, including
-    /// how many page credits remain.
-    pub async fn get_account_info(&self) -> Result<AccountInfo, ScribeError> {
-        let mut url = self.base_url.clone();
-        url.set_path("/api/account");
-        self.with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
-            .await
     }
 
     /// Submits a document for human review, attaching `comment` as the

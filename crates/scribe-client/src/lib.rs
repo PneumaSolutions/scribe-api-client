@@ -11,6 +11,6 @@ pub use channel::{ChannelEvent, DocumentChannel};
 pub use client::{DocumentSource, ScribeClient};
 pub use error::ScribeError;
 pub use model::{
-    AccountInfo, BrailleTable, CreatedDocument, Dialect, DocumentSummary, Language, Output,
+    BrailleTable, CreatedDocument, Dialect, DocumentList, DocumentSummary, Language, Output,
     OutputFormat, Settings, SettingsUpdate, Stage, Voice,
 };
