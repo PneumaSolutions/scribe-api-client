@@ -13,6 +13,9 @@
 
 set -euo pipefail
 
+# Xcode strips PATH when running build phases; add cargo manually.
+export PATH="$HOME/.cargo/bin:$PATH"
+
 WORKSPACE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # Run all cargo commands from the workspace root so Cargo.toml is found.
 cd "$WORKSPACE_DIR"
