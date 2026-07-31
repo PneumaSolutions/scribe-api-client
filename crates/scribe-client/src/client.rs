@@ -17,7 +17,8 @@ use crate::{
 };
 
 /// How early to proactively refresh a token before it actually expires.
-const REFRESH_SKEW: Duration = Duration::from_secs(30);
+/// 5 minutes gives enough headroom for slow mobile networks and cold starts.
+const REFRESH_SKEW: Duration = Duration::from_secs(300);
 
 /// What to create a document from.
 pub enum DocumentSource {
@@ -152,16 +153,8 @@ impl ScribeClient {
     pub async fn delete_document(&self, document_id: &str) -> Result<(), ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path(&format!("/api/documents/{document_id}"));
-
-        let token = self.access_token().await?;
-        self.http
-            .delete(url)
-            .bearer_auth(&token)
-            .send()
-            .await?
-            .error_for_status_or_json_error()
+        self.with_auth_retry_raw(|token| self.http.delete(url.clone()).bearer_auth(token))
             .await?;
-
         Ok(())
     }
 
@@ -175,15 +168,10 @@ impl ScribeClient {
         let mut url = self.base_url.clone();
         url.set_path(&format!("/api/documents/{document_id}/feedback"));
         let body = serde_json::json!({ "comment": comment });
-        let token = self.access_token().await?;
-        self.http
-            .post(url)
-            .bearer_auth(&token)
-            .json(&body)
-            .send()
-            .await?
-            .error_for_status_or_json_error()
-            .await?;
+        self.with_auth_retry_raw(|token| {
+            self.http.post(url.clone()).bearer_auth(token).json(&body)
+        })
+        .await?;
         Ok(())
     }
 
@@ -206,6 +194,23 @@ impl ScribeClient {
         document_id: &str,
     ) -> Result<DocumentChannel, ScribeError> {
         let token = self.access_token().await?;
+        match self.connect_ws_channel(document_id, &token).await {
+            // WebSocket handshake failure likely means the token was rejected
+            // (Phoenix returns 403 when UserSocket.connect/3 returns :error).
+            // Retry once with a force-refreshed token before giving up.
+            Err(ScribeError::WebSocket(_)) => {
+                let token = self.force_refresh().await?;
+                self.connect_ws_channel(document_id, &token).await
+            }
+            other => other,
+        }
+    }
+
+    async fn connect_ws_channel(
+        &self,
+        document_id: &str,
+        token: &str,
+    ) -> Result<DocumentChannel, ScribeError> {
         let mut url = self.base_url.clone();
         let ws_scheme = if url.scheme() == "https" { "wss" } else { "ws" };
         url.set_scheme(ws_scheme)
@@ -213,7 +218,7 @@ impl ScribeClient {
         url.set_path("/socket/websocket");
         url.query_pairs_mut()
             .append_pair("vsn", "2.0.0")
-            .append_pair("token", &token);
+            .append_pair("token", token);
         let (ws, _response) = tokio_tungstenite::connect_async(url.as_str())
             .await
             .map_err(|e| ScribeError::WebSocket(Box::new(e)))?;
@@ -250,14 +255,8 @@ impl ScribeClient {
             "/api/documents/{document_id}/outputs/{}/download",
             format.as_str()
         ));
-        let token = self.access_token().await?;
         let response = self
-            .http
-            .get(url)
-            .bearer_auth(&token)
-            .send()
-            .await?
-            .error_for_status_or_json_error()
+            .with_auth_retry_raw(|token| self.http.get(url.clone()).bearer_auth(token))
             .await?;
         Ok(response.bytes().await?.to_vec())
     }
@@ -341,10 +340,10 @@ impl ScribeClient {
     }
 
     /// Sends a request built by `build`, retrying once with a
-    /// force-refreshed token if the server returns `401`.
-    async fn with_auth_retry<T, F>(&self, build: F) -> Result<T, ScribeError>
+    /// force-refreshed token if the server returns `401`. Returns the
+    /// validated response for callers that need to read the body themselves.
+    async fn with_auth_retry_raw<F>(&self, build: F) -> Result<reqwest::Response, ScribeError>
     where
-        T: serde::de::DeserializeOwned,
         F: Fn(&str) -> reqwest::RequestBuilder,
     {
         let token = self.access_token().await?;
@@ -355,8 +354,16 @@ impl ScribeClient {
         } else {
             response
         };
-        response
-            .error_for_status_or_json_error()
+        response.error_for_status_or_json_error().await
+    }
+
+    /// Like [`with_auth_retry_raw`] but deserializes the response body as JSON.
+    async fn with_auth_retry<T, F>(&self, build: F) -> Result<T, ScribeError>
+    where
+        T: serde::de::DeserializeOwned,
+        F: Fn(&str) -> reqwest::RequestBuilder,
+    {
+        self.with_auth_retry_raw(build)
             .await?
             .json()
             .await
