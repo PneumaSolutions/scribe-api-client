@@ -16,8 +16,8 @@ use pyo3::{
 use url::Url;
 
 use scribe_client_core::{
-    AuthClient, DocumentChannel, DocumentSource, DocumentSummary, Output, OutputFormat,
-    PkceChallenge, ScribeClient, ScribeError, Settings, SettingsUpdate, TokenSet,
+    AuthClient, DocumentChannel, DocumentList, DocumentSource, DocumentSummary, Output,
+    OutputFormat, PkceChallenge, ScribeClient, ScribeError, Settings, SettingsUpdate, TokenSet,
 };
 
 create_exception!(scribe_client, ScribeApiError, PyException);
@@ -280,6 +280,38 @@ impl PyDocumentSummary {
     }
 }
 
+/// The result of `list_documents()`, including the caller's page credit balance.
+#[pyclass(name = "DocumentList")]
+struct PyDocumentList {
+    inner: DocumentList,
+}
+
+#[pymethods]
+impl PyDocumentList {
+    #[getter]
+    fn documents(&self) -> Vec<PyDocumentSummary> {
+        self.inner
+            .documents
+            .iter()
+            .cloned()
+            .map(|inner| PyDocumentSummary { inner })
+            .collect()
+    }
+
+    #[getter]
+    fn pages_remaining(&self) -> Option<i64> {
+        self.inner.pages_remaining
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "DocumentList(documents={} items, pages_remaining={:?})",
+            self.inner.documents.len(),
+            self.inner.pages_remaining
+        )
+    }
+}
+
 /// A document's current conversion settings.
 #[pyclass(name = "Settings")]
 struct PySettings {
@@ -410,13 +442,9 @@ impl PyScribeClient {
             .map_err(to_py_err)
     }
 
-    fn list_documents(&self, py: Python<'_>) -> PyResult<Vec<PyDocumentSummary>> {
+    fn list_documents(&self, py: Python<'_>) -> PyResult<PyDocumentList> {
         py.detach(|| runtime().block_on(self.inner.list_documents()))
-            .map(|docs| {
-                docs.into_iter()
-                    .map(|inner| PyDocumentSummary { inner })
-                    .collect()
-            })
+            .map(|inner| PyDocumentList { inner })
             .map_err(to_py_err)
     }
 
@@ -582,6 +610,7 @@ fn scribe_client(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyAuthClient>()?;
     m.add_class::<PyOutput>()?;
     m.add_class::<PyDocumentSummary>()?;
+    m.add_class::<PyDocumentList>()?;
     m.add_class::<PySettings>()?;
     m.add_class::<PyScribeClient>()?;
     m.add_class::<PyDocumentChannel>()?;

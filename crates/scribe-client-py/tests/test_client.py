@@ -60,7 +60,7 @@ def test_list_documents_parses_documents_with_embedded_outputs(mock_server):
         },
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
-    documents = client.list_documents()
+    documents = client.list_documents().documents
     assert len(documents) == 1
     assert documents[0].id == "doc-1"
     assert documents[0].title == "Report"
@@ -89,7 +89,7 @@ def test_list_documents_handles_a_null_title(mock_server):
         },
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
-    documents = client.list_documents()
+    documents = client.list_documents().documents
 
     assert documents[0].title is None
 

@@ -330,7 +330,7 @@ async fn list_documents_parses_documents_with_embedded_outputs() {
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
-    let documents = client.list_documents().await.unwrap();
+    let documents = client.list_documents().await.unwrap().documents;
     assert_eq!(documents.len(), 1);
     assert_eq!(documents[0].id, "doc-1");
     assert_eq!(documents[0].title.as_deref(), Some("Report"));
@@ -362,7 +362,7 @@ async fn list_documents_handles_a_null_title() {
         .await;
 
     let client = client_for(&server, valid_tokens());
-    let documents = client.list_documents().await.unwrap();
+    let documents = client.list_documents().await.unwrap().documents;
 
     assert_eq!(documents[0].title, None);
 }

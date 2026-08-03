@@ -71,8 +71,9 @@ fast preview), so the caller has something to show immediately even if
 the account is out of page credits for a full conversion.
 
 ```python
-documents = client.list_documents()
-for doc in documents:
+result = client.list_documents()
+print(result.pages_remaining)  # None if the account isn't page-metered
+for doc in result.documents:
     # doc.title and doc.page_count are None until the server has
     # determined them (e.g. briefly, for a URL-sourced document).
     print(doc.id, doc.title, doc.page_count, doc.inserted_at)
