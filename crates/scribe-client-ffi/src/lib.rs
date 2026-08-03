@@ -342,6 +342,21 @@ impl From<SettingsUpdate> for CoreSettingsUpdate {
     }
 }
 
+/// A user's push-notification preference. One flag today, on purpose —
+/// device tokens are per-device, so this is user-scoped, not per-document.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct NotificationSettings {
+    pub push_notify_when_complete: bool,
+}
+
+impl From<scribe_client_core::NotificationSettings> for NotificationSettings {
+    fn from(s: scribe_client_core::NotificationSettings) -> Self {
+        NotificationSettings {
+            push_notify_when_complete: s.push_notify_when_complete,
+        }
+    }
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Language {
     pub display_name: String,
@@ -627,6 +642,38 @@ impl FfiScribeClient {
         let core_update: CoreSettingsUpdate = update.into();
         runtime()
             .block_on(self.inner.update_settings(&document_id, &core_update))
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn register_device(&self, token: String, platform: String) -> Result<(), ScribeError> {
+        runtime()
+            .block_on(self.inner.register_device(&token, &platform))
+            .map_err(Into::into)
+    }
+
+    pub fn unregister_device(&self, token: String) -> Result<(), ScribeError> {
+        runtime()
+            .block_on(self.inner.unregister_device(&token))
+            .map_err(Into::into)
+    }
+
+    pub fn get_notification_settings(&self) -> Result<NotificationSettings, ScribeError> {
+        runtime()
+            .block_on(self.inner.get_notification_settings())
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn update_notification_settings(
+        &self,
+        push_notify_when_complete: bool,
+    ) -> Result<NotificationSettings, ScribeError> {
+        runtime()
+            .block_on(
+                self.inner
+                    .update_notification_settings(push_notify_when_complete),
+            )
             .map(Into::into)
             .map_err(Into::into)
     }

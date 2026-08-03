@@ -179,6 +179,13 @@ pub struct SettingsUpdate {
     pub notify_when_complete: Option<bool>,
 }
 
+/// A user's push-notification preference. One flag today, on purpose —
+/// device tokens are per-device, so this is user-scoped, not per-document.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationSettings {
+    pub push_notify_when_complete: bool,
+}
+
 /// A `(display_name, language_code)` pair from `GET /api/settings/languages`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Language(pub String, pub String);

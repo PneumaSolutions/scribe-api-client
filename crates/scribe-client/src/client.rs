@@ -11,8 +11,8 @@ use crate::{
     error::ScribeError,
     model::{
         BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect, DialectsResponse,
-        DocumentList, DocumentListResponse, DocumentSummary, Language, LanguagesResponse, Output,
-        OutputFormat, OutputListResponse, Settings, SettingsUpdate, Voice, VoicesResponse,
+        DocumentList, DocumentListResponse, Language, LanguagesResponse, NotificationSettings,
+        Output, OutputFormat, OutputListResponse, Settings, SettingsUpdate, Voice, VoicesResponse,
     },
 };
 
@@ -287,6 +287,60 @@ impl ScribeClient {
         let mut url = self.base_url.clone();
         url.set_path(&format!("/api/documents/{document_id}/settings"));
         let body = serde_json::json!({ "settings": update });
+        self.with_auth_retry(|token| self.http.patch(url.clone()).bearer_auth(token).json(&body))
+            .await
+    }
+
+    /// Registers `token` (the hex-encoded APNs device token) so the server
+    /// can send this device push notifications. Registration is an upsert —
+    /// re-registering the same token re-points it at the current user (e.g.
+    /// after signing out and into a different account on the same device).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn register_device(&self, token: &str, platform: &str) -> Result<(), ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/devices");
+        let body = serde_json::json!({ "token": token, "platform": platform });
+        self.with_auth_retry_raw(|token| self.http.post(url.clone()).bearer_auth(token).json(&body))
+            .await?;
+        Ok(())
+    }
+
+    /// Unregisters `token`, e.g. on sign-out, so this device stops receiving push.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn unregister_device(&self, token: &str) -> Result<(), ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path(&format!("/api/devices/{token}"));
+        self.with_auth_retry_raw(|t| self.http.delete(url.clone()).bearer_auth(t))
+            .await?;
+        Ok(())
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn get_notification_settings(&self) -> Result<NotificationSettings, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/notification_settings");
+        self.with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn update_notification_settings(
+        &self,
+        push_notify_when_complete: bool,
+    ) -> Result<NotificationSettings, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/notification_settings");
+        let body = serde_json::json!({ "push_notify_when_complete": push_notify_when_complete });
         self.with_auth_retry(|token| self.http.patch(url.clone()).bearer_auth(token).json(&body))
             .await
     }
