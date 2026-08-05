@@ -18,6 +18,8 @@ pub enum ScribeError {
     NotFound,
     #[error("forbidden")]
     Forbidden,
+    #[error("document must be moved to the trash before it can be permanently deleted")]
+    NotTrashed,
     /// The document channel's WebSocket connection failed or was closed
     /// unexpectedly. Boxed: `tungstenite::Error` is large enough on its own
     /// to blow up the size of every other, far more common, error path.

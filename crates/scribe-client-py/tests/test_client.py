@@ -4,6 +4,7 @@ from scribe_client import (
     ConversionNotCompleteError,
     ForbiddenError,
     NotFoundError,
+    NotTrashedError,
     ScribeClient,
     TokenSet,
 )
@@ -94,22 +95,83 @@ def test_list_documents_handles_a_null_title(mock_server):
     assert documents[0].title is None
 
 
-def test_delete_document_succeeds_on_204(mock_server):
+def test_trash_document_succeeds_on_204(mock_server):
     mock_server.add_empty_route("DELETE", "/api/documents/doc-1", 204)
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
-    client.delete_document("doc-1")
+    client.trash_document("doc-1")
     [request] = mock_server.recorded_requests
     assert request["method"] == "DELETE"
     assert request["headers"]["authorization"] == "Bearer at-valid"
 
 
-def test_delete_document_raises_not_found_error(mock_server):
+def test_trash_document_raises_not_found_error(mock_server):
     mock_server.add_json_route(
         "DELETE", "/api/documents/missing", 404, {"error": "not_found"}
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     with pytest.raises(NotFoundError):
-        client.delete_document("missing")
+        client.trash_document("missing")
+
+
+def test_delete_document_permanently_succeeds_on_204(mock_server):
+    mock_server.add_empty_route("DELETE", "/api/documents/doc-1/permanent", 204)
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    client.delete_document_permanently("doc-1")
+    [request] = mock_server.recorded_requests
+    assert request["method"] == "DELETE"
+
+
+def test_delete_document_permanently_raises_not_trashed_error(mock_server):
+    mock_server.add_json_route(
+        "DELETE", "/api/documents/doc-1/permanent", 409, {"error": "not_trashed"}
+    )
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    with pytest.raises(NotTrashedError):
+        client.delete_document_permanently("doc-1")
+
+
+def test_recover_document_succeeds_on_204(mock_server):
+    mock_server.add_empty_route("POST", "/api/documents/doc-1/recover", 204)
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    client.recover_document("doc-1")
+    [request] = mock_server.recorded_requests
+    assert request["method"] == "POST"
+
+
+def test_recover_document_raises_not_found_error(mock_server):
+    mock_server.add_json_route(
+        "POST", "/api/documents/missing/recover", 404, {"error": "not_found"}
+    )
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    with pytest.raises(NotFoundError):
+        client.recover_document("missing")
+
+
+def test_list_trashed_documents_parses_rows(mock_server):
+    mock_server.add_json_route(
+        "GET",
+        "/api/documents/trash",
+        200,
+        {
+            "documents": [
+                {
+                    "id": "doc-1",
+                    "title": "Report",
+                    "page_count": 3,
+                    "inserted_at": "2026-07-08T20:04:24.000000Z",
+                    "trashed_at": "2026-08-03T13:46:26.000000Z",
+                    "permanently_delete_at": "2026-08-10T13:46:26.000000Z",
+                }
+            ]
+        },
+    )
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    documents = client.list_trashed_documents()
+    assert len(documents) == 1
+    assert documents[0].id == "doc-1"
+    assert documents[0].title == "Report"
+    assert documents[0].trashed_at == "2026-08-03T13:46:26.000000Z"
+    assert documents[0].permanently_delete_at == "2026-08-10T13:46:26.000000Z"
 
 
 def test_list_outputs_parses_in_progress_and_complete_rows(mock_server):

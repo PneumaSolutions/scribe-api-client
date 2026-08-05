@@ -368,7 +368,7 @@ async fn list_documents_handles_a_null_title() {
 }
 
 #[tokio::test]
-async fn delete_document_succeeds_on_204() {
+async fn trash_document_succeeds_on_204() {
     let server = MockServer::start().await;
     Mock::given(method("DELETE"))
         .and(path("/api/documents/doc-1"))
@@ -377,11 +377,11 @@ async fn delete_document_succeeds_on_204() {
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
-    client.delete_document("doc-1").await.unwrap();
+    client.trash_document("doc-1").await.unwrap();
 }
 
 #[tokio::test]
-async fn delete_document_maps_not_found() {
+async fn trash_document_maps_not_found() {
     let server = MockServer::start().await;
     Mock::given(method("DELETE"))
         .and(path("/api/documents/missing"))
@@ -391,12 +391,12 @@ async fn delete_document_maps_not_found() {
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
-    let result = client.delete_document("missing").await;
+    let result = client.trash_document("missing").await;
     assert!(matches!(result, Err(ScribeError::NotFound)));
 }
 
 #[tokio::test]
-async fn delete_document_maps_forbidden() {
+async fn trash_document_maps_forbidden() {
     let server = MockServer::start().await;
     Mock::given(method("DELETE"))
         .and(path("/api/documents/doc-1"))
@@ -406,6 +406,93 @@ async fn delete_document_maps_forbidden() {
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
-    let result = client.delete_document("doc-1").await;
+    let result = client.trash_document("doc-1").await;
     assert!(matches!(result, Err(ScribeError::Forbidden)));
+}
+
+#[tokio::test]
+async fn delete_document_permanently_succeeds_on_204() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/documents/doc-1/permanent"))
+        .and(header("authorization", "Bearer at-valid"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    client.delete_document_permanently("doc-1").await.unwrap();
+}
+
+#[tokio::test]
+async fn delete_document_permanently_maps_not_trashed() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/documents/doc-1/permanent"))
+        .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
+            "error": "not_trashed"
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let result = client.delete_document_permanently("doc-1").await;
+    assert!(matches!(result, Err(ScribeError::NotTrashed)));
+}
+
+#[tokio::test]
+async fn recover_document_succeeds_on_204() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/documents/doc-1/recover"))
+        .and(header("authorization", "Bearer at-valid"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    client.recover_document("doc-1").await.unwrap();
+}
+
+#[tokio::test]
+async fn recover_document_maps_not_found() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/documents/missing/recover"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": "not_found"
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let result = client.recover_document("missing").await;
+    assert!(matches!(result, Err(ScribeError::NotFound)));
+}
+
+#[tokio::test]
+async fn list_trashed_documents_parses_rows() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents/trash"))
+        .and(header("authorization", "Bearer at-valid"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "documents": [
+                {
+                    "id": "doc-1",
+                    "title": "Report",
+                    "page_count": 3,
+                    "inserted_at": "2026-07-08T20:04:24.000000Z",
+                    "trashed_at": "2026-08-03T13:46:26.000000Z",
+                    "permanently_delete_at": "2026-08-10T13:46:26.000000Z"
+                }
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let documents = client.list_trashed_documents().await.unwrap();
+    assert_eq!(documents.len(), 1);
+    assert_eq!(documents[0].id, "doc-1");
+    assert_eq!(documents[0].trashed_at, "2026-08-03T13:46:26.000000Z");
+    assert_eq!(
+        documents[0].permanently_delete_at,
+        "2026-08-10T13:46:26.000000Z"
+    );
 }

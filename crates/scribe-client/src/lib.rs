@@ -12,5 +12,6 @@ pub use client::{DocumentSource, ScribeClient};
 pub use error::ScribeError;
 pub use model::{
     BrailleTable, CreatedDocument, Dialect, DocumentList, DocumentSummary, Language,
-    NotificationSettings, Output, OutputFormat, Settings, SettingsUpdate, Stage, Voice,
+    NotificationSettings, Output, OutputFormat, Settings, SettingsUpdate, Stage, TrashedDocument,
+    Voice,
 };

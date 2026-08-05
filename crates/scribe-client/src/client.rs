@@ -12,7 +12,8 @@ use crate::{
     model::{
         BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect, DialectsResponse,
         DocumentList, DocumentListResponse, Language, LanguagesResponse, NotificationSettings,
-        Output, OutputFormat, OutputListResponse, Settings, SettingsUpdate, Voice, VoicesResponse,
+        Output, OutputFormat, OutputListResponse, Settings, SettingsUpdate, TrashedDocument,
+        TrashedDocumentListResponse, Voice, VoicesResponse,
     },
 };
 
@@ -143,19 +144,69 @@ impl ScribeClient {
         })
     }
 
-    /// Permanently deletes a document and all of its outputs.
+    /// Moves a document to the trash. It's permanently deleted 7 days later,
+    /// or sooner per the owner's org retention policy, unless recovered
+    /// first with [`recover_document`](Self::recover_document).
     ///
     /// # Errors
     ///
     /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
     /// document doesn't exist or isn't owned by the caller, or
     /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures.
-    pub async fn delete_document(&self, document_id: &str) -> Result<(), ScribeError> {
+    pub async fn trash_document(&self, document_id: &str) -> Result<(), ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path(&format!("/api/documents/{document_id}"));
         self.with_auth_retry_raw(|token| self.http.delete(url.clone()).bearer_auth(token))
             .await?;
         Ok(())
+    }
+
+    /// Permanently deletes a document and all of its outputs. The document
+    /// must already be in the trash (see
+    /// [`trash_document`](Self::trash_document)).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
+    /// document doesn't exist or isn't owned by the caller,
+    /// [`ScribeError::NotTrashed`] if it hasn't been moved to the trash yet,
+    /// or [`ScribeError::Http`]/[`ScribeError::Api`] on other request
+    /// failures.
+    pub async fn delete_document_permanently(&self, document_id: &str) -> Result<(), ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path(&format!("/api/documents/{document_id}/permanent"));
+        self.with_auth_retry_raw(|token| self.http.delete(url.clone()).bearer_auth(token))
+            .await?;
+        Ok(())
+    }
+
+    /// Restores a trashed document, clearing its trash state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
+    /// document doesn't exist or isn't owned by the caller, or
+    /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures.
+    pub async fn recover_document(&self, document_id: &str) -> Result<(), ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path(&format!("/api/documents/{document_id}/recover"));
+        self.with_auth_retry_raw(|token| self.http.post(url.clone()).bearer_auth(token))
+            .await?;
+        Ok(())
+    }
+
+    /// Lists the caller's trashed documents, most recently trashed first.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn list_trashed_documents(&self) -> Result<Vec<TrashedDocument>, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/documents/trash");
+        let response: TrashedDocumentListResponse = self
+            .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await?;
+        Ok(response.documents)
     }
 
     /// Submits a document for human review, attaching `comment` as the
@@ -444,6 +495,7 @@ impl ResponseExt for reqwest::Response {
             (404, _) => ScribeError::NotFound,
             (403, _) => ScribeError::Forbidden,
             (409, "conversion_not_complete") => ScribeError::ConversionNotComplete,
+            (409, "not_trashed") => ScribeError::NotTrashed,
             (status, error) => ScribeError::Api {
                 status,
                 error: error.to_string(),

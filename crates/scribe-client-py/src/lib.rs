@@ -18,12 +18,14 @@ use url::Url;
 use scribe_client_core::{
     AuthClient, DocumentChannel, DocumentList, DocumentSource, DocumentSummary, Output,
     OutputFormat, PkceChallenge, ScribeClient, ScribeError, Settings, SettingsUpdate, TokenSet,
+    TrashedDocument,
 };
 
 create_exception!(scribe_client, ScribeApiError, PyException);
 create_exception!(scribe_client, InvalidGrantError, ScribeApiError);
 create_exception!(scribe_client, NotFoundError, ScribeApiError);
 create_exception!(scribe_client, ForbiddenError, ScribeApiError);
+create_exception!(scribe_client, NotTrashedError, ScribeApiError);
 create_exception!(scribe_client, ConversionNotCompleteError, ScribeApiError);
 create_exception!(scribe_client, ConversionInProgressError, ScribeApiError);
 create_exception!(scribe_client, RateLimitedError, ScribeApiError);
@@ -44,6 +46,9 @@ fn to_py_err(err: ScribeError) -> PyErr {
         ScribeError::InvalidGrant(msg) => InvalidGrantError::new_err(msg),
         ScribeError::NotFound => NotFoundError::new_err("not found"),
         ScribeError::Forbidden => ForbiddenError::new_err("forbidden"),
+        ScribeError::NotTrashed => NotTrashedError::new_err(
+            "document must be moved to the trash before it can be permanently deleted",
+        ),
         ScribeError::ConversionNotComplete => {
             ConversionNotCompleteError::new_err("document is not finished converting yet")
         }
@@ -312,6 +317,56 @@ impl PyDocumentList {
     }
 }
 
+/// One row from `list_trashed_documents()`.
+#[pyclass(name = "TrashedDocument")]
+struct PyTrashedDocument {
+    inner: TrashedDocument,
+}
+
+#[pymethods]
+impl PyTrashedDocument {
+    #[getter]
+    fn id(&self) -> &str {
+        &self.inner.id
+    }
+
+    #[getter]
+    fn title(&self) -> Option<&str> {
+        self.inner.title.as_deref()
+    }
+
+    #[getter]
+    fn page_count(&self) -> Option<i64> {
+        self.inner.page_count
+    }
+
+    /// ISO 8601 UTC timestamp of when the document was created.
+    #[getter]
+    fn inserted_at(&self) -> &str {
+        &self.inner.inserted_at
+    }
+
+    /// ISO 8601 UTC timestamp of when the document was moved to the trash.
+    #[getter]
+    fn trashed_at(&self) -> &str {
+        &self.inner.trashed_at
+    }
+
+    /// ISO 8601 UTC timestamp of when the document will be permanently
+    /// deleted if it isn't recovered first.
+    #[getter]
+    fn permanently_delete_at(&self) -> &str {
+        &self.inner.permanently_delete_at
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "TrashedDocument(id={:?}, title={:?})",
+            self.inner.id, self.inner.title
+        )
+    }
+}
+
 /// A document's current conversion settings.
 #[pyclass(name = "Settings")]
 struct PySettings {
@@ -448,8 +503,36 @@ impl PyScribeClient {
             .map_err(to_py_err)
     }
 
-    fn delete_document(&self, py: Python<'_>, document_id: &str) -> PyResult<()> {
-        py.detach(|| runtime().block_on(self.inner.delete_document(document_id)))
+    /// Moves a document to the trash. It's permanently deleted 7 days
+    /// later, or sooner per the owner's org retention policy, unless
+    /// recovered first with `recover_document`.
+    fn trash_document(&self, py: Python<'_>, document_id: &str) -> PyResult<()> {
+        py.detach(|| runtime().block_on(self.inner.trash_document(document_id)))
+            .map_err(to_py_err)
+    }
+
+    /// Permanently deletes a document and all of its outputs. The document
+    /// must already be in the trash (see `trash_document`).
+    fn delete_document_permanently(&self, py: Python<'_>, document_id: &str) -> PyResult<()> {
+        py.detach(|| runtime().block_on(self.inner.delete_document_permanently(document_id)))
+            .map_err(to_py_err)
+    }
+
+    /// Restores a trashed document, clearing its trash state.
+    fn recover_document(&self, py: Python<'_>, document_id: &str) -> PyResult<()> {
+        py.detach(|| runtime().block_on(self.inner.recover_document(document_id)))
+            .map_err(to_py_err)
+    }
+
+    /// Lists the caller's trashed documents, most recently trashed first.
+    fn list_trashed_documents(&self, py: Python<'_>) -> PyResult<Vec<PyTrashedDocument>> {
+        py.detach(|| runtime().block_on(self.inner.list_trashed_documents()))
+            .map(|documents| {
+                documents
+                    .into_iter()
+                    .map(|inner| PyTrashedDocument { inner })
+                    .collect()
+            })
             .map_err(to_py_err)
     }
 
@@ -611,6 +694,7 @@ fn scribe_client(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyOutput>()?;
     m.add_class::<PyDocumentSummary>()?;
     m.add_class::<PyDocumentList>()?;
+    m.add_class::<PyTrashedDocument>()?;
     m.add_class::<PySettings>()?;
     m.add_class::<PyScribeClient>()?;
     m.add_class::<PyDocumentChannel>()?;
@@ -618,6 +702,7 @@ fn scribe_client(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("InvalidGrantError", py.get_type::<InvalidGrantError>())?;
     m.add("NotFoundError", py.get_type::<NotFoundError>())?;
     m.add("ForbiddenError", py.get_type::<ForbiddenError>())?;
+    m.add("NotTrashedError", py.get_type::<NotTrashedError>())?;
     m.add(
         "ConversionNotCompleteError",
         py.get_type::<ConversionNotCompleteError>(),

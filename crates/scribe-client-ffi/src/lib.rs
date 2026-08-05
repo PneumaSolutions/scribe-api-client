@@ -46,6 +46,8 @@ pub enum ScribeError {
     NotFound,
     #[error("forbidden")]
     Forbidden,
+    #[error("document must be moved to the trash before it can be permanently deleted")]
+    NotTrashed,
     #[error("a conversion is already in progress for this document")]
     ConversionInProgress,
     #[error("rate limited, try again shortly")]
@@ -77,6 +79,7 @@ impl From<scribe_client_core::ScribeError> for ScribeError {
             scribe_client_core::ScribeError::ConversionNotComplete => Self::ConversionNotComplete,
             scribe_client_core::ScribeError::NotFound => Self::NotFound,
             scribe_client_core::ScribeError::Forbidden => Self::Forbidden,
+            scribe_client_core::ScribeError::NotTrashed => Self::NotTrashed,
             scribe_client_core::ScribeError::ConversionInProgress => Self::ConversionInProgress,
             scribe_client_core::ScribeError::RateLimited => Self::RateLimited,
             scribe_client_core::ScribeError::NeedsPurchase { purchase_url } => {
@@ -261,6 +264,34 @@ impl From<scribe_client_core::DocumentSummary> for DocumentSummary {
             page_count: d.page_count,
             inserted_at: d.inserted_at,
             outputs: d.outputs.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// One row from `list_trashed_documents()`.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TrashedDocument {
+    pub id: String,
+    pub title: Option<String>,
+    pub page_count: Option<i64>,
+    /// ISO 8601 UTC timestamp of when the document was created.
+    pub inserted_at: String,
+    /// ISO 8601 UTC timestamp of when the document was moved to the trash.
+    pub trashed_at: String,
+    /// ISO 8601 UTC timestamp of when the document will be permanently
+    /// deleted if it isn't recovered first.
+    pub permanently_delete_at: String,
+}
+
+impl From<scribe_client_core::TrashedDocument> for TrashedDocument {
+    fn from(d: scribe_client_core::TrashedDocument) -> Self {
+        TrashedDocument {
+            id: d.id,
+            title: d.title,
+            page_count: d.page_count,
+            inserted_at: d.inserted_at,
+            trashed_at: d.trashed_at,
+            permanently_delete_at: d.permanently_delete_at,
         }
     }
 }
@@ -569,9 +600,35 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    pub fn delete_document(&self, document_id: String) -> Result<(), ScribeError> {
+    /// Moves a document to the trash. It's permanently deleted 7 days
+    /// later, or sooner per the owner's org retention policy, unless
+    /// recovered first with `recover_document`.
+    pub fn trash_document(&self, document_id: String) -> Result<(), ScribeError> {
         runtime()
-            .block_on(self.inner.delete_document(&document_id))
+            .block_on(self.inner.trash_document(&document_id))
+            .map_err(Into::into)
+    }
+
+    /// Permanently deletes a document and all of its outputs. The document
+    /// must already be in the trash (see `trash_document`).
+    pub fn delete_document_permanently(&self, document_id: String) -> Result<(), ScribeError> {
+        runtime()
+            .block_on(self.inner.delete_document_permanently(&document_id))
+            .map_err(Into::into)
+    }
+
+    /// Restores a trashed document, clearing its trash state.
+    pub fn recover_document(&self, document_id: String) -> Result<(), ScribeError> {
+        runtime()
+            .block_on(self.inner.recover_document(&document_id))
+            .map_err(Into::into)
+    }
+
+    /// Lists the caller's trashed documents, most recently trashed first.
+    pub fn list_trashed_documents(&self) -> Result<Vec<TrashedDocument>, ScribeError> {
+        runtime()
+            .block_on(self.inner.list_trashed_documents())
+            .map(|documents| documents.into_iter().map(Into::into).collect())
             .map_err(Into::into)
     }
 

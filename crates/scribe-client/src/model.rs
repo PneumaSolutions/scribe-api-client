@@ -129,6 +129,26 @@ pub(crate) struct DocumentListResponse {
     pub pages_remaining: Option<i64>,
 }
 
+/// One row from `GET /api/documents/trash`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TrashedDocument {
+    pub id: String,
+    pub title: Option<String>,
+    pub page_count: Option<i64>,
+    /// ISO 8601 UTC timestamp of when the document was created.
+    pub inserted_at: String,
+    /// ISO 8601 UTC timestamp of when the document was moved to the trash.
+    pub trashed_at: String,
+    /// ISO 8601 UTC timestamp of when the document will be permanently
+    /// deleted if it isn't recovered first.
+    pub permanently_delete_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TrashedDocumentListResponse {
+    pub documents: Vec<TrashedDocument>,
+}
+
 /// A document's current conversion settings
 #[allow(clippy::struct_excessive_bools)] // mirrors the server's flat settings shape
 #[derive(Debug, Clone, Deserialize)]
