@@ -96,17 +96,17 @@ def test_list_documents_handles_a_null_title(mock_server):
 
 
 def test_trash_document_succeeds_on_204(mock_server):
-    mock_server.add_empty_route("DELETE", "/api/documents/doc-1", 204)
+    mock_server.add_empty_route("POST", "/api/documents/doc-1/trash", 204)
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     client.trash_document("doc-1")
     [request] = mock_server.recorded_requests
-    assert request["method"] == "DELETE"
+    assert request["method"] == "POST"
     assert request["headers"]["authorization"] == "Bearer at-valid"
 
 
 def test_trash_document_raises_not_found_error(mock_server):
     mock_server.add_json_route(
-        "DELETE", "/api/documents/missing", 404, {"error": "not_found"}
+        "POST", "/api/documents/missing/trash", 404, {"error": "not_found"}
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     with pytest.raises(NotFoundError):
@@ -114,7 +114,7 @@ def test_trash_document_raises_not_found_error(mock_server):
 
 
 def test_delete_document_permanently_succeeds_on_204(mock_server):
-    mock_server.add_empty_route("DELETE", "/api/documents/doc-1/permanent", 204)
+    mock_server.add_empty_route("DELETE", "/api/documents/doc-1", 204)
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     client.delete_document_permanently("doc-1")
     [request] = mock_server.recorded_requests
@@ -123,7 +123,7 @@ def test_delete_document_permanently_succeeds_on_204(mock_server):
 
 def test_delete_document_permanently_raises_not_trashed_error(mock_server):
     mock_server.add_json_route(
-        "DELETE", "/api/documents/doc-1/permanent", 409, {"error": "not_trashed"}
+        "DELETE", "/api/documents/doc-1", 409, {"error": "not_trashed"}
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     with pytest.raises(NotTrashedError):

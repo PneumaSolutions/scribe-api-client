@@ -155,8 +155,8 @@ impl ScribeClient {
     /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures.
     pub async fn trash_document(&self, document_id: &str) -> Result<(), ScribeError> {
         let mut url = self.base_url.clone();
-        url.set_path(&format!("/api/documents/{document_id}"));
-        self.with_auth_retry_raw(|token| self.http.delete(url.clone()).bearer_auth(token))
+        url.set_path(&format!("/api/documents/{document_id}/trash"));
+        self.with_auth_retry_raw(|token| self.http.post(url.clone()).bearer_auth(token))
             .await?;
         Ok(())
     }
@@ -174,7 +174,7 @@ impl ScribeClient {
     /// failures.
     pub async fn delete_document_permanently(&self, document_id: &str) -> Result<(), ScribeError> {
         let mut url = self.base_url.clone();
-        url.set_path(&format!("/api/documents/{document_id}/permanent"));
+        url.set_path(&format!("/api/documents/{document_id}"));
         self.with_auth_retry_raw(|token| self.http.delete(url.clone()).bearer_auth(token))
             .await?;
         Ok(())

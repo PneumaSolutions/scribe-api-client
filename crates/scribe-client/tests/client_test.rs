@@ -370,8 +370,8 @@ async fn list_documents_handles_a_null_title() {
 #[tokio::test]
 async fn trash_document_succeeds_on_204() {
     let server = MockServer::start().await;
-    Mock::given(method("DELETE"))
-        .and(path("/api/documents/doc-1"))
+    Mock::given(method("POST"))
+        .and(path("/api/documents/doc-1/trash"))
         .and(header("authorization", "Bearer at-valid"))
         .respond_with(ResponseTemplate::new(204))
         .mount(&server)
@@ -383,8 +383,8 @@ async fn trash_document_succeeds_on_204() {
 #[tokio::test]
 async fn trash_document_maps_not_found() {
     let server = MockServer::start().await;
-    Mock::given(method("DELETE"))
-        .and(path("/api/documents/missing"))
+    Mock::given(method("POST"))
+        .and(path("/api/documents/missing/trash"))
         .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
             "error": "not_found"
         })))
@@ -398,8 +398,8 @@ async fn trash_document_maps_not_found() {
 #[tokio::test]
 async fn trash_document_maps_forbidden() {
     let server = MockServer::start().await;
-    Mock::given(method("DELETE"))
-        .and(path("/api/documents/doc-1"))
+    Mock::given(method("POST"))
+        .and(path("/api/documents/doc-1/trash"))
         .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
             "error": "forbidden"
         })))
@@ -414,7 +414,7 @@ async fn trash_document_maps_forbidden() {
 async fn delete_document_permanently_succeeds_on_204() {
     let server = MockServer::start().await;
     Mock::given(method("DELETE"))
-        .and(path("/api/documents/doc-1/permanent"))
+        .and(path("/api/documents/doc-1"))
         .and(header("authorization", "Bearer at-valid"))
         .respond_with(ResponseTemplate::new(204))
         .mount(&server)
@@ -427,7 +427,7 @@ async fn delete_document_permanently_succeeds_on_204() {
 async fn delete_document_permanently_maps_not_trashed() {
     let server = MockServer::start().await;
     Mock::given(method("DELETE"))
-        .and(path("/api/documents/doc-1/permanent"))
+        .and(path("/api/documents/doc-1"))
         .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
             "error": "not_trashed"
         })))
