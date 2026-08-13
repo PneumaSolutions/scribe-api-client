@@ -10,10 +10,10 @@ use crate::{
     channel::DocumentChannel,
     error::ScribeError,
     model::{
-        BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect, DialectsResponse,
-        DocumentList, DocumentListResponse, Language, LanguagesResponse, NotificationSettings,
-        Output, OutputFormat, OutputListResponse, Settings, SettingsUpdate, TrashedDocument,
-        TrashedDocumentListResponse, Voice, VoicesResponse,
+        AccountInfo, BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect,
+        DialectsResponse, DocumentList, DocumentListResponse, Language, LanguagesResponse,
+        NotificationSettings, Output, OutputFormat, OutputListResponse, Settings, SettingsUpdate,
+        TrashedDocument, TrashedDocumentListResponse, Voice, VoicesResponse,
     },
 };
 
@@ -393,6 +393,16 @@ impl ScribeClient {
         url.set_path("/api/notification_settings");
         let body = serde_json::json!({ "push_notify_when_complete": push_notify_when_complete });
         self.with_auth_retry(|token| self.http.patch(url.clone()).bearer_auth(token).json(&body))
+            .await
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn get_account_info(&self) -> Result<AccountInfo, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/account_info");
+        self.with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
             .await
     }
 

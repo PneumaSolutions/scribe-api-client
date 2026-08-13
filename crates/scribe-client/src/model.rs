@@ -206,6 +206,16 @@ pub struct NotificationSettings {
     pub push_notify_when_complete: bool,
 }
 
+/// The authenticated user's name, email, and phone number, for read-only
+/// display in the app's Account screen.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountInfo {
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub email: Option<String>,
+    pub phone_number: Option<String>,
+}
+
 /// A `(display_name, language_code)` pair from `GET /api/settings/languages`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Language(pub String, pub String);

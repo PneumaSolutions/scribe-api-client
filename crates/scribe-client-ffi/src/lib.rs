@@ -388,6 +388,27 @@ impl From<scribe_client_core::NotificationSettings> for NotificationSettings {
     }
 }
 
+/// The authenticated user's name, email, and phone number, for read-only
+/// display in the app's Account screen.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct AccountInfo {
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub email: Option<String>,
+    pub phone_number: Option<String>,
+}
+
+impl From<scribe_client_core::AccountInfo> for AccountInfo {
+    fn from(a: scribe_client_core::AccountInfo) -> Self {
+        AccountInfo {
+            first_name: a.first_name,
+            last_name: a.last_name,
+            email: a.email,
+            phone_number: a.phone_number,
+        }
+    }
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Language {
     pub display_name: String,
@@ -731,6 +752,13 @@ impl FfiScribeClient {
                 self.inner
                     .update_notification_settings(push_notify_when_complete),
             )
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get_account_info(&self) -> Result<AccountInfo, ScribeError> {
+        runtime()
+            .block_on(self.inner.get_account_info())
             .map(Into::into)
             .map_err(Into::into)
     }
