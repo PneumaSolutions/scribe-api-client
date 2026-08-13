@@ -86,7 +86,10 @@ struct TokenResponse {
 struct TokenErrorResponse {
     error: String,
     #[allow(dead_code)]
+    #[serde(default)]
     error_description: Option<String>,
+    #[serde(default)]
+    message: Option<String>,
 }
 
 impl From<TokenResponse> for TokenSet {
@@ -195,16 +198,22 @@ impl AuthClient {
         } else {
             let text = response.text().await.unwrap_or_default();
             match serde_json::from_str::<TokenErrorResponse>(&text) {
-                Ok(err) if err.error == "invalid_grant" => {
-                    Err(ScribeError::InvalidGrant(err.error))
-                }
+                Ok(err) if err.error == "invalid_grant" => Err(ScribeError::InvalidGrant {
+                    message: err
+                        .message
+                        .unwrap_or_else(|| "Your session has expired. Please sign in again.".to_string()),
+                }),
                 Ok(err) => Err(ScribeError::Api {
                     status: status.as_u16(),
-                    error: err.error,
+                    code: err.error,
+                    message: err
+                        .message
+                        .unwrap_or_else(|| "We couldn't sign you in. Please try again.".to_string()),
                 }),
                 Err(_) => Err(ScribeError::Api {
                     status: status.as_u16(),
-                    error: text,
+                    code: "server_error".to_string(),
+                    message: "We couldn't sign you in. Please try again.".to_string(),
                 }),
             }
         }

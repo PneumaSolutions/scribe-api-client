@@ -63,13 +63,13 @@ async fn get_settings_maps_not_found() {
     Mock::given(method("GET"))
         .and(path("/api/documents/missing/settings"))
         .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "error": "not_found"
+            "error": {"code": "not_found", "message": "We couldn't find that."}
         })))
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
     let result = client.get_settings("missing").await;
-    assert!(matches!(result, Err(ScribeError::NotFound)));
+    assert!(matches!(result, Err(ScribeError::NotFound { .. })));
 }
 
 #[tokio::test]
@@ -124,7 +124,7 @@ async fn update_settings_maps_forbidden() {
     Mock::given(method("PATCH"))
         .and(path("/api/documents/doc-1/settings"))
         .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
-            "error": "forbidden"
+            "error": {"code": "forbidden", "message": "You don't have permission to do that."}
         })))
         .mount(&server)
         .await;
@@ -134,7 +134,7 @@ async fn update_settings_maps_forbidden() {
         .update_settings("doc-1", &scribe_client::SettingsUpdate::default())
         .await;
 
-    assert!(matches!(result, Err(ScribeError::Forbidden)));
+    assert!(matches!(result, Err(ScribeError::Forbidden { .. })));
 }
 
 #[tokio::test]

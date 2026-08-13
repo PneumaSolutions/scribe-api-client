@@ -34,26 +34,30 @@ fn http_client() -> Client {
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum ScribeError {
-    #[error("request failed: {message}")]
+    #[error("{message}")]
     Http { message: String },
-    #[error("{status}: {error}")]
-    Api { status: u16, error: String },
-    #[error("invalid_grant: {message}")]
+    #[error("{message}")]
+    Api {
+        status: u16,
+        code: String,
+        message: String,
+    },
+    #[error("{message}")]
     InvalidGrant { message: String },
-    #[error("conversion not complete")]
-    ConversionNotComplete,
-    #[error("not found")]
-    NotFound,
-    #[error("forbidden")]
-    Forbidden,
-    #[error("document must be moved to the trash before it can be permanently deleted")]
-    NotTrashed,
-    #[error("a conversion is already in progress for this document")]
-    ConversionInProgress,
-    #[error("rate limited, try again shortly")]
-    RateLimited,
-    #[error("insufficient page credits; purchase more at {purchase_url}")]
-    NeedsPurchase { purchase_url: String },
+    #[error("{message}")]
+    ConversionNotComplete { message: String },
+    #[error("{message}")]
+    NotFound { message: String },
+    #[error("{message}")]
+    Forbidden { message: String },
+    #[error("{message}")]
+    NotTrashed { message: String },
+    #[error("{message}")]
+    ConversionInProgress { message: String },
+    #[error("{message}")]
+    RateLimited { message: String },
+    #[error("{message}")]
+    NeedsPurchase { message: String, purchase_url: String },
     #[error("channel closed before a reply arrived")]
     ChannelClosed,
     #[error("{message}")]
@@ -63,36 +67,62 @@ pub enum ScribeError {
 impl From<scribe_client_core::ScribeError> for ScribeError {
     fn from(e: scribe_client_core::ScribeError) -> Self {
         match e {
-            scribe_client_core::ScribeError::Http(e) => Self::Http {
-                message: e.to_string(),
+            // Transport-level failures — no server text to draw from.
+            // Deliberately NOT calling `.to_string()` on the inner
+            // reqwest/serde/url error (that would leak raw transport
+            // internals); use the same fixed friendly text every other
+            // layer of this app uses for "no server response at all".
+            scribe_client_core::ScribeError::Http(_) => Self::Http {
+                message: "Couldn't connect to Scribe. Check your connection and try again."
+                    .to_string(),
             },
-            scribe_client_core::ScribeError::Decode(e) => Self::Other {
-                message: e.to_string(),
+            scribe_client_core::ScribeError::Decode(_) => Self::Other {
+                message: "Something went wrong. Please try again.".to_string(),
             },
-            scribe_client_core::ScribeError::Url(e) => Self::Other {
-                message: e.to_string(),
+            scribe_client_core::ScribeError::Url(_) => Self::Other {
+                message: "Something went wrong. Please try again.".to_string(),
             },
-            scribe_client_core::ScribeError::Api { status, error } => Self::Api { status, error },
-            scribe_client_core::ScribeError::InvalidGrant(message) => {
+            scribe_client_core::ScribeError::Api {
+                status,
+                code,
+                message,
+            } => Self::Api {
+                status,
+                code,
+                message,
+            },
+            scribe_client_core::ScribeError::InvalidGrant { message } => {
                 Self::InvalidGrant { message }
             }
-            scribe_client_core::ScribeError::ConversionNotComplete => Self::ConversionNotComplete,
-            scribe_client_core::ScribeError::NotFound => Self::NotFound,
-            scribe_client_core::ScribeError::Forbidden => Self::Forbidden,
-            scribe_client_core::ScribeError::NotTrashed => Self::NotTrashed,
-            scribe_client_core::ScribeError::ConversionInProgress => Self::ConversionInProgress,
-            scribe_client_core::ScribeError::RateLimited => Self::RateLimited,
-            scribe_client_core::ScribeError::NeedsPurchase { purchase_url } => {
-                Self::NeedsPurchase { purchase_url }
+            scribe_client_core::ScribeError::ConversionNotComplete { message } => {
+                Self::ConversionNotComplete { message }
             }
-            scribe_client_core::ScribeError::ChannelClosed => Self::ChannelClosed,
-            // Transport-level failures rather than a business-meaningful
-            // condition the app would branch on; fall back to a message,
-            // same as the Python bindings do for these.
-            other @ (scribe_client_core::ScribeError::WebSocket(_)
-            | scribe_client_core::ScribeError::Channel(_)) => Self::Other {
-                message: other.to_string(),
+            scribe_client_core::ScribeError::NotFound { message } => Self::NotFound { message },
+            scribe_client_core::ScribeError::Forbidden { message } => {
+                Self::Forbidden { message }
+            }
+            scribe_client_core::ScribeError::NotTrashed { message } => {
+                Self::NotTrashed { message }
+            }
+            scribe_client_core::ScribeError::ConversionInProgress { message } => {
+                Self::ConversionInProgress { message }
+            }
+            scribe_client_core::ScribeError::RateLimited { message } => {
+                Self::RateLimited { message }
+            }
+            scribe_client_core::ScribeError::NeedsPurchase {
+                message,
+                purchase_url,
+            } => Self::NeedsPurchase {
+                message,
+                purchase_url,
             },
+            scribe_client_core::ScribeError::ChannelClosed => Self::ChannelClosed,
+            scribe_client_core::ScribeError::WebSocket(_) => Self::Other {
+                message: "Couldn't connect to Scribe. Check your connection and try again."
+                    .to_string(),
+            },
+            scribe_client_core::ScribeError::Channel { message } => Self::Other { message },
         }
     }
 }

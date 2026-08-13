@@ -43,22 +43,21 @@ fn runtime() -> &'static tokio::runtime::Runtime {
 
 fn to_py_err(err: ScribeError) -> PyErr {
     match err {
-        ScribeError::InvalidGrant(msg) => InvalidGrantError::new_err(msg),
-        ScribeError::NotFound => NotFoundError::new_err("not found"),
-        ScribeError::Forbidden => ForbiddenError::new_err("forbidden"),
-        ScribeError::NotTrashed => NotTrashedError::new_err(
-            "document must be moved to the trash before it can be permanently deleted",
-        ),
-        ScribeError::ConversionNotComplete => {
-            ConversionNotCompleteError::new_err("document is not finished converting yet")
+        ScribeError::InvalidGrant { message } => InvalidGrantError::new_err(message),
+        ScribeError::NotFound { message } => NotFoundError::new_err(message),
+        ScribeError::Forbidden { message } => ForbiddenError::new_err(message),
+        ScribeError::NotTrashed { message } => NotTrashedError::new_err(message),
+        ScribeError::ConversionNotComplete { message } => {
+            ConversionNotCompleteError::new_err(message)
         }
-        ScribeError::ConversionInProgress => ConversionInProgressError::new_err(
-            "a conversion is already in progress for this document",
-        ),
-        ScribeError::RateLimited => RateLimitedError::new_err("rate limited, try again shortly"),
-        ScribeError::NeedsPurchase { purchase_url } => NeedsPurchaseError::new_err(format!(
-            "insufficient page credits; purchase more at {purchase_url}"
-        )),
+        ScribeError::ConversionInProgress { message } => {
+            ConversionInProgressError::new_err(message)
+        }
+        ScribeError::RateLimited { message } => RateLimitedError::new_err(message),
+        ScribeError::NeedsPurchase {
+            message,
+            purchase_url,
+        } => NeedsPurchaseError::new_err(format!("{message} ({purchase_url})")),
         other => ScribeApiError::new_err(other.to_string()),
     }
 }

@@ -65,7 +65,7 @@ async fn exchange_code_maps_invalid_grant() {
     let result = client
         .exchange_code("myapp://callback", "auth-code", "wrong-verifier")
         .await;
-    assert!(matches!(result, Err(ScribeError::InvalidGrant(_))));
+    assert!(matches!(result, Err(ScribeError::InvalidGrant { .. })));
 }
 
 #[tokio::test]
@@ -83,9 +83,14 @@ async fn exchange_code_maps_unrecognized_error_to_api_variant() {
         .exchange_code("myapp://callback", "auth-code", "the-verifier")
         .await;
     match result {
-        Err(ScribeError::Api { status, error }) => {
+        Err(ScribeError::Api {
+            status,
+            code,
+            message,
+        }) => {
             assert_eq!(status, 400);
-            assert_eq!(error, "unsupported_grant_type");
+            assert_eq!(code, "unsupported_grant_type");
+            assert_eq!(message, "We couldn't sign you in. Please try again.");
         }
         other => panic!("expected Api error, got {other:?}"),
     }
@@ -104,9 +109,16 @@ async fn exchange_code_maps_non_json_error_body_to_api_variant() {
         .exchange_code("myapp://callback", "auth-code", "the-verifier")
         .await;
     match result {
-        Err(ScribeError::Api { status, error }) => {
+        // A non-JSON body (e.g. an upstream proxy's plain-text error) must
+        // never be surfaced verbatim — falls back to a generic message.
+        Err(ScribeError::Api {
+            status,
+            code,
+            message,
+        }) => {
             assert_eq!(status, 502);
-            assert_eq!(error, "upstream timeout");
+            assert_eq!(code, "server_error");
+            assert_eq!(message, "We couldn't sign you in. Please try again.");
         }
         other => panic!("expected Api error, got {other:?}"),
     }
@@ -126,7 +138,7 @@ async fn refresh_maps_invalid_grant() {
         .await;
     let client = auth_client(&server.uri());
     let result = client.refresh("rt-revoked").await;
-    assert!(matches!(result, Err(ScribeError::InvalidGrant(_))));
+    assert!(matches!(result, Err(ScribeError::InvalidGrant { .. })));
 }
 
 #[tokio::test]

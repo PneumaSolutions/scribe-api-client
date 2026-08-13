@@ -31,7 +31,14 @@ pub enum DocumentSource {
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
-    error: String,
+    error: ApiErrorBody,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiErrorBody {
+    code: String,
+    #[serde(default)]
+    message: Option<String>,
 }
 
 /// A client for the document-conversion endpoints
@@ -87,7 +94,9 @@ impl ScribeClient {
         let refresh_token = tokens
             .refresh_token
             .clone()
-            .ok_or_else(|| ScribeError::InvalidGrant("no refresh token available".into()))?;
+            .ok_or_else(|| ScribeError::InvalidGrant {
+                message: "Your session has expired. Please sign in again.".to_string(),
+            })?;
         *tokens = self.auth.refresh(&refresh_token).await?;
         Ok(tokens.access_token.clone())
     }
@@ -265,7 +274,9 @@ impl ScribeClient {
         let mut url = self.base_url.clone();
         let ws_scheme = if url.scheme() == "https" { "wss" } else { "ws" };
         url.set_scheme(ws_scheme)
-            .map_err(|()| ScribeError::Channel("failed to build a WebSocket URL".into()))?;
+            .map_err(|()| ScribeError::Channel {
+                message: "Something went wrong. Please try again.".to_string(),
+            })?;
         url.set_path("/socket/websocket");
         url.query_pairs_mut()
             .append_pair("vsn", "2.0.0")
@@ -498,17 +509,29 @@ impl ResponseExt for reqwest::Response {
             return Ok(self);
         }
         let text = self.text().await.unwrap_or_default();
-        let error = serde_json::from_str::<ApiErrorResponse>(&text)
-            .map(|e| e.error)
-            .unwrap_or(text);
-        Err(match (status.as_u16(), error.as_str()) {
-            (404, _) => ScribeError::NotFound,
-            (403, _) => ScribeError::Forbidden,
-            (409, "conversion_not_complete") => ScribeError::ConversionNotComplete,
-            (409, "not_trashed") => ScribeError::NotTrashed,
-            (status, error) => ScribeError::Api {
-                status,
-                error: error.to_string(),
+        // A parse failure here means the body wasn't our JSON envelope at
+        // all (an HTML error page, a proxy's plain-text response, etc.) —
+        // never surface that raw text, fall back to a generic message.
+        let Ok(body) = serde_json::from_str::<ApiErrorResponse>(&text) else {
+            return Err(ScribeError::Api {
+                status: status.as_u16(),
+                code: "server_error".to_string(),
+                message: "Something went wrong. Please try again.".to_string(),
+            });
+        };
+        let message = body
+            .error
+            .message
+            .unwrap_or_else(|| "Something went wrong. Please try again.".to_string());
+        Err(match body.error.code.as_str() {
+            "not_found" => ScribeError::NotFound { message },
+            "forbidden" => ScribeError::Forbidden { message },
+            "not_trashed" => ScribeError::NotTrashed { message },
+            "conversion_not_complete" => ScribeError::ConversionNotComplete { message },
+            _ => ScribeError::Api {
+                status: status.as_u16(),
+                code: body.error.code,
+                message,
             },
         })
     }

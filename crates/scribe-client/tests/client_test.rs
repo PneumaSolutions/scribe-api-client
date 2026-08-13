@@ -101,13 +101,13 @@ async fn download_output_maps_conversion_not_complete() {
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs/pdf/download"))
         .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
-            "error": "conversion_not_complete"
+            "error": {"code": "conversion_not_complete", "message": "This file isn't ready yet."}
         })))
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
     let result = client.download_output("doc-1", OutputFormat::Pdf).await;
-    assert!(matches!(result, Err(ScribeError::ConversionNotComplete)));
+    assert!(matches!(result, Err(ScribeError::ConversionNotComplete { .. })));
 }
 
 #[tokio::test]
@@ -135,13 +135,13 @@ async fn list_outputs_maps_not_found() {
     Mock::given(method("GET"))
         .and(path("/api/documents/missing/outputs"))
         .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "error": "not_found"
+            "error": {"code": "not_found", "message": "We couldn't find that."}
         })))
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
     let result = client.list_outputs("missing").await;
-    assert!(matches!(result, Err(ScribeError::NotFound)));
+    assert!(matches!(result, Err(ScribeError::NotFound { .. })));
 }
 
 #[tokio::test]
@@ -150,13 +150,13 @@ async fn list_outputs_maps_forbidden() {
     Mock::given(method("GET"))
         .and(path("/api/documents/other-users-doc/outputs"))
         .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
-            "error": "forbidden"
+            "error": {"code": "forbidden", "message": "You don't have permission to do that."}
         })))
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
     let result = client.list_outputs("other-users-doc").await;
-    assert!(matches!(result, Err(ScribeError::Forbidden)));
+    assert!(matches!(result, Err(ScribeError::Forbidden { .. })));
 }
 
 #[tokio::test]
@@ -165,16 +165,21 @@ async fn list_outputs_maps_unrecognized_error_to_api_variant() {
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs"))
         .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
-            "error": "internal_error"
+            "error": {"code": "internal_error", "message": "Something broke upstream."}
         })))
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
     let result = client.list_outputs("doc-1").await;
     match result {
-        Err(ScribeError::Api { status, error }) => {
+        Err(ScribeError::Api {
+            status,
+            code,
+            message,
+        }) => {
             assert_eq!(status, 500);
-            assert_eq!(error, "internal_error");
+            assert_eq!(code, "internal_error");
+            assert_eq!(message, "Something broke upstream.");
         }
         other => panic!("expected Api error, got {other:?}"),
     }
@@ -227,7 +232,7 @@ async fn a_401_with_no_refresh_token_available_surfaces_invalid_grant() {
     };
     let client = client_for(&server, tokens_without_refresh);
     let result = client.list_outputs("doc-1").await;
-    assert!(matches!(result, Err(ScribeError::InvalidGrant(_))));
+    assert!(matches!(result, Err(ScribeError::InvalidGrant { .. })));
 }
 
 #[tokio::test]
@@ -386,13 +391,13 @@ async fn trash_document_maps_not_found() {
     Mock::given(method("POST"))
         .and(path("/api/documents/missing/trash"))
         .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "error": "not_found"
+            "error": {"code": "not_found", "message": "We couldn't find that."}
         })))
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
     let result = client.trash_document("missing").await;
-    assert!(matches!(result, Err(ScribeError::NotFound)));
+    assert!(matches!(result, Err(ScribeError::NotFound { .. })));
 }
 
 #[tokio::test]
@@ -401,13 +406,13 @@ async fn trash_document_maps_forbidden() {
     Mock::given(method("POST"))
         .and(path("/api/documents/doc-1/trash"))
         .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
-            "error": "forbidden"
+            "error": {"code": "forbidden", "message": "You don't have permission to do that."}
         })))
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
     let result = client.trash_document("doc-1").await;
-    assert!(matches!(result, Err(ScribeError::Forbidden)));
+    assert!(matches!(result, Err(ScribeError::Forbidden { .. })));
 }
 
 #[tokio::test]
@@ -429,13 +434,13 @@ async fn delete_document_permanently_maps_not_trashed() {
     Mock::given(method("DELETE"))
         .and(path("/api/documents/doc-1"))
         .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
-            "error": "not_trashed"
+            "error": {"code": "not_trashed", "message": "This document isn't in the trash."}
         })))
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
     let result = client.delete_document_permanently("doc-1").await;
-    assert!(matches!(result, Err(ScribeError::NotTrashed)));
+    assert!(matches!(result, Err(ScribeError::NotTrashed { .. })));
 }
 
 #[tokio::test]
@@ -457,13 +462,13 @@ async fn recover_document_maps_not_found() {
     Mock::given(method("POST"))
         .and(path("/api/documents/missing/recover"))
         .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "error": "not_found"
+            "error": {"code": "not_found", "message": "We couldn't find that."}
         })))
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
     let result = client.recover_document("missing").await;
-    assert!(matches!(result, Err(ScribeError::NotFound)));
+    assert!(matches!(result, Err(ScribeError::NotFound { .. })));
 }
 
 #[tokio::test]

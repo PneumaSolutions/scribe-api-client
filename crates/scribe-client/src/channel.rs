@@ -254,14 +254,30 @@ fn map_channel_error(payload: Value) -> ScribeError {
     let Ok(err) = serde_json::from_value::<ErrorReason>(payload) else {
         return ScribeError::ChannelClosed;
     };
+    // These channel error frames don't carry a `message` field from the
+    // server yet, so the friendly text here is a client-side fallback for
+    // now (matches the text these codes have always shown) — everything
+    // that already gets a server `message` (HTTP API responses, OAuth
+    // token errors) uses that instead; see error_for_status_or_json_error.
     match err.reason.as_str() {
-        "not_found" => ScribeError::NotFound,
-        "forbidden" => ScribeError::Forbidden,
-        "conversion_in_progress" => ScribeError::ConversionInProgress,
-        "rate_limited" => ScribeError::RateLimited,
+        "not_found" => ScribeError::NotFound {
+            message: "We couldn't find that document.".to_string(),
+        },
+        "forbidden" => ScribeError::Forbidden {
+            message: "You don't have permission to access that document.".to_string(),
+        },
+        "conversion_in_progress" => ScribeError::ConversionInProgress {
+            message: "A conversion is already in progress for this document.".to_string(),
+        },
+        "rate_limited" => ScribeError::RateLimited {
+            message: "Rate limited, try again shortly.".to_string(),
+        },
         "needs_purchase" => ScribeError::NeedsPurchase {
+            message: "You need to purchase more pages to do that.".to_string(),
             purchase_url: err.purchase_url.unwrap_or_default(),
         },
-        other => ScribeError::Channel(other.to_string()),
+        _ => ScribeError::Channel {
+            message: "Something went wrong. Please try again.".to_string(),
+        },
     }
 }

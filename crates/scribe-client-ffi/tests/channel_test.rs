@@ -173,7 +173,7 @@ async fn ffi_open_channel_maps_not_found() {
     let result = tokio::task::spawn_blocking(move || client.open_document_channel("doc-1".into()))
         .await
         .unwrap();
-    assert!(matches!(result, Err(ScribeError::NotFound)));
+    assert!(matches!(result, Err(ScribeError::NotFound { .. })));
 }
 
 #[tokio::test]
@@ -217,7 +217,7 @@ async fn ffi_start_conversion_maps_needs_purchase() {
     .await
     .unwrap();
     match result {
-        Err(ScribeError::NeedsPurchase { purchase_url }) => {
+        Err(ScribeError::NeedsPurchase { purchase_url, .. }) => {
             assert_eq!(purchase_url, "https://example.test/buy");
         }
         other => panic!("expected NeedsPurchase, got {other:?}"),

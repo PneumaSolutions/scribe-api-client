@@ -170,7 +170,7 @@ async fn join_error_maps_not_found() {
     .await;
     let client = client_for(base_url);
     let result = client.open_document_channel("doc-1").await;
-    assert!(matches!(result, Err(ScribeError::NotFound)));
+    assert!(matches!(result, Err(ScribeError::NotFound { .. })));
 }
 
 #[tokio::test]
@@ -210,7 +210,7 @@ async fn start_conversion_error_maps_needs_purchase() {
     let mut channel = client.open_document_channel("doc-1").await.unwrap();
     let result = channel.start_conversion(OutputFormat::Pdf).await;
     match result {
-        Err(ScribeError::NeedsPurchase { purchase_url }) => {
+        Err(ScribeError::NeedsPurchase { purchase_url, .. }) => {
             assert_eq!(purchase_url, "https://example.test/buy");
         }
         other => panic!("expected NeedsPurchase, got {other:?}"),
