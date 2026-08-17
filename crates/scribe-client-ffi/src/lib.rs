@@ -418,14 +418,16 @@ impl From<scribe_client_core::NotificationSettings> for NotificationSettings {
     }
 }
 
-/// The authenticated user's name, email, and phone number, for read-only
-/// display in the app's Account screen.
+/// The authenticated user's name, email, phone number, and (if the account
+/// belongs to a real organization rather than an individual) organization
+/// name, for read-only display in the app's Account screen.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct AccountInfo {
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub email: Option<String>,
     pub phone_number: Option<String>,
+    pub organization_name: Option<String>,
 }
 
 impl From<scribe_client_core::AccountInfo> for AccountInfo {
@@ -435,6 +437,7 @@ impl From<scribe_client_core::AccountInfo> for AccountInfo {
             last_name: a.last_name,
             email: a.email,
             phone_number: a.phone_number,
+            organization_name: a.organization_name,
         }
     }
 }
