@@ -43,7 +43,10 @@ def test_get_settings_returns_current_document_settings(mock_server):
 
 def test_get_settings_raises_not_found_error(mock_server):
     mock_server.add_json_route(
-        "GET", "/api/documents/missing/settings", 404, {"error": "not_found"}
+        "GET",
+        "/api/documents/missing/settings",
+        404,
+        {"error": {"code": "not_found", "message": "We couldn't find that."}},
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     with pytest.raises(NotFoundError):
@@ -74,7 +77,10 @@ def test_update_settings_sends_only_provided_fields(mock_server):
 
 def test_update_settings_raises_forbidden_error(mock_server):
     mock_server.add_json_route(
-        "PATCH", "/api/documents/doc-1/settings", 403, {"error": "forbidden"}
+        "PATCH",
+        "/api/documents/doc-1/settings",
+        403,
+        {"error": {"code": "forbidden", "message": "You don't have permission to do that."}},
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     with pytest.raises(ForbiddenError):

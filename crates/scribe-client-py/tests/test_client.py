@@ -106,7 +106,10 @@ def test_trash_document_succeeds_on_204(mock_server):
 
 def test_trash_document_raises_not_found_error(mock_server):
     mock_server.add_json_route(
-        "POST", "/api/documents/missing/trash", 404, {"error": "not_found"}
+        "POST",
+        "/api/documents/missing/trash",
+        404,
+        {"error": {"code": "not_found", "message": "We couldn't find that."}},
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     with pytest.raises(NotFoundError):
@@ -123,7 +126,10 @@ def test_delete_document_permanently_succeeds_on_204(mock_server):
 
 def test_delete_document_permanently_raises_not_trashed_error(mock_server):
     mock_server.add_json_route(
-        "DELETE", "/api/documents/doc-1", 409, {"error": "not_trashed"}
+        "DELETE",
+        "/api/documents/doc-1",
+        409,
+        {"error": {"code": "not_trashed", "message": "That document isn't trashed."}},
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     with pytest.raises(NotTrashedError):
@@ -140,7 +146,10 @@ def test_recover_document_succeeds_on_204(mock_server):
 
 def test_recover_document_raises_not_found_error(mock_server):
     mock_server.add_json_route(
-        "POST", "/api/documents/missing/recover", 404, {"error": "not_found"}
+        "POST",
+        "/api/documents/missing/recover",
+        404,
+        {"error": {"code": "not_found", "message": "We couldn't find that."}},
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     with pytest.raises(NotFoundError):
@@ -213,7 +222,10 @@ def test_list_outputs_parses_in_progress_and_complete_rows(mock_server):
 
 def test_list_outputs_raises_not_found_error(mock_server):
     mock_server.add_json_route(
-        "GET", "/api/documents/missing/outputs", 404, {"error": "not_found"}
+        "GET",
+        "/api/documents/missing/outputs",
+        404,
+        {"error": {"code": "not_found", "message": "We couldn't find that."}},
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     with pytest.raises(NotFoundError):
@@ -222,7 +234,10 @@ def test_list_outputs_raises_not_found_error(mock_server):
 
 def test_list_outputs_raises_forbidden_error(mock_server):
     mock_server.add_json_route(
-        "GET", "/api/documents/other-users-doc/outputs", 403, {"error": "forbidden"}
+        "GET",
+        "/api/documents/other-users-doc/outputs",
+        403,
+        {"error": {"code": "forbidden", "message": "You don't have permission to do that."}},
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     with pytest.raises(ForbiddenError):
@@ -243,7 +258,7 @@ def test_download_output_raises_conversion_not_complete_error(mock_server):
         "GET",
         "/api/documents/doc-1/outputs/pdf/download",
         409,
-        {"error": "conversion_not_complete"},
+        {"error": {"code": "conversion_not_complete", "message": "This file isn't ready yet."}},
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     with pytest.raises(ConversionNotCompleteError):
