@@ -141,6 +141,15 @@ impl AuthClient {
     /// flow.
     #[must_use]
     pub fn authorization_url(&self, redirect_uri: &str, pkce: &PkceChallenge) -> Url {
+        self.authorization_url_with_challenge(redirect_uri, pkce.challenge())
+    }
+
+    /// [`AuthClient::authorization_url`] for callers that hold the challenge on
+    /// its own rather than the whole [`PkceChallenge`] — the FFI hands the
+    /// verifier to the host application to keep between the two halves of the
+    /// flow, so by this point only the challenge string is left.
+    #[must_use]
+    pub fn authorization_url_with_challenge(&self, redirect_uri: &str, pkce_challenge: &str) -> Url {
         let mut authorize = self.base_url.clone();
         authorize.set_path("/oauth/authorize");
         authorize
@@ -148,7 +157,7 @@ impl AuthClient {
             .append_pair("response_type", "code")
             .append_pair("client_id", &self.client_id)
             .append_pair("redirect_uri", redirect_uri)
-            .append_pair("code_challenge", pkce.challenge())
+            .append_pair("code_challenge", pkce_challenge)
             .append_pair("code_challenge_method", "S256");
 
         // `next` is a path and query only, never an absolute URL: the server
@@ -208,6 +217,45 @@ impl AuthClient {
             ("refresh_token", refresh_token),
         ];
         self.send_token_request(url, &body).await
+    }
+
+    /// Asks the server to invalidate a token, so signing out ends the session
+    /// there and then rather than leaving a refresh token usable until it
+    /// expires on its own.
+    ///
+    /// Pass the refresh token when there is one: revoking it takes the access
+    /// tokens issued alongside it with it. Passing an access token instead
+    /// revokes only that token.
+    ///
+    /// Per RFC 7009 the server answers successfully whether or not it
+    /// recognised the token, so a success here means the request was accepted,
+    /// not that something was necessarily revoked.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`] if the request could not be sent, or
+    /// [`ScribeError::Api`] if the server refused it.
+    pub async fn revoke(&self, token: &str) -> Result<(), ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/oauth/revoke");
+        let body = [("client_id", self.client_id.as_str()), ("token", token)];
+        let response = self.http.post(url).form(&body).send().await?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+
+        let text = response.text().await.unwrap_or_default();
+        let fallback = || "We couldn't sign you out completely.".to_string();
+        let (code, message) = match serde_json::from_str::<TokenErrorResponse>(&text) {
+            Ok(err) => (err.error, err.message.unwrap_or_else(fallback)),
+            Err(_) => ("server_error".to_string(), fallback()),
+        };
+        Err(ScribeError::Api {
+            status: status.as_u16(),
+            code,
+            message,
+        })
     }
 
     async fn send_token_request(

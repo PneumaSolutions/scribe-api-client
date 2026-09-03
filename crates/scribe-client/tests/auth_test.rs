@@ -47,6 +47,52 @@ fn authorization_url_wraps_the_authorize_request_in_a_logout_redirect() {
 }
 
 #[tokio::test]
+async fn revoke_posts_the_token_to_the_revocation_endpoint() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/oauth/revoke"))
+        .and(body_string_contains("token=rt-456"))
+        .and(body_string_contains("client_id=test-client-id"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let client = auth_client(&server.uri());
+    client.revoke("rt-456").await.unwrap();
+}
+
+#[tokio::test]
+async fn revoke_succeeds_for_a_token_the_server_does_not_know() {
+    // RFC 7009: the server answers successfully whether or not it recognised
+    // the token, so signing out cannot be blocked by an already dead token.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/oauth/revoke"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let client = auth_client(&server.uri());
+    assert!(client.revoke("already-revoked").await.is_ok());
+}
+
+#[tokio::test]
+async fn revoke_maps_a_refusal_to_the_api_variant() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/oauth/revoke"))
+        .respond_with(ResponseTemplate::new(503).set_body_json(serde_json::json!({
+            "error": "temporarily_unavailable"
+        })))
+        .mount(&server)
+        .await;
+    let client = auth_client(&server.uri());
+    let result = client.revoke("rt-456").await;
+    assert!(matches!(
+        result,
+        Err(ScribeError::Api { status: 503, .. })
+    ));
+}
+
+#[tokio::test]
 async fn exchange_code_returns_token_set_on_success() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
