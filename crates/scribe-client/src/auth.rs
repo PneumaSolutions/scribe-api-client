@@ -126,16 +126,41 @@ impl AuthClient {
 
     /// Builds the URL the user's browser should be sent to. `redirect_uri`
     /// must match one registered for `client_id` server-side.
+    ///
+    /// The authorize request is wrapped in the server's `/auth/logout`
+    /// redirect, so whatever session the browser is holding for this server is
+    /// dropped before the authorize request is reached. Signing out only
+    /// clears this device's tokens: the browser's cookie store belongs to the
+    /// system, and an app has no way to reach into it. Without this, a session
+    /// cookie surviving sign-out lets the next sign-in complete without asking
+    /// for anything.
+    ///
+    /// Clearing it at sign-in rather than at sign-out is what keeps the
+    /// browser's SSO session with the identity provider intact, so a returning
+    /// user is asked for their email address instead of the whole credential
+    /// flow.
     #[must_use]
     pub fn authorization_url(&self, redirect_uri: &str, pkce: &PkceChallenge) -> Url {
-        let mut url = self.base_url.clone();
-        url.set_path("/oauth/authorize");
-        url.query_pairs_mut()
+        let mut authorize = self.base_url.clone();
+        authorize.set_path("/oauth/authorize");
+        authorize
+            .query_pairs_mut()
             .append_pair("response_type", "code")
             .append_pair("client_id", &self.client_id)
             .append_pair("redirect_uri", redirect_uri)
             .append_pair("code_challenge", pkce.challenge())
             .append_pair("code_challenge_method", "S256");
+
+        // `next` is a path and query only, never an absolute URL: the server
+        // refuses external targets so it cannot be used as an open redirect.
+        let next = match authorize.query() {
+            Some(query) => format!("{}?{}", authorize.path(), query),
+            None => authorize.path().to_owned(),
+        };
+
+        let mut url = self.base_url.clone();
+        url.set_path("/auth/logout");
+        url.query_pairs_mut().append_pair("next", &next);
         url
     }
 

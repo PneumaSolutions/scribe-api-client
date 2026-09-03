@@ -14,12 +14,32 @@ fn auth_client(base_url: &str) -> AuthClient {
 }
 
 #[test]
-fn authorization_url_includes_pkce_challenge() {
+fn authorization_url_wraps_the_authorize_request_in_a_logout_redirect() {
+    // Signing out can only drop this device's tokens, so the authorize request
+    // is reached through /auth/logout to clear whatever session the browser is
+    // still holding for this server.
     let client = auth_client("https://scribe.example/");
     let pkce = PkceChallenge::generate();
     let url = client.authorization_url("myapp://callback", &pkce);
-    assert_eq!(url.path(), "/oauth/authorize");
-    let pairs: std::collections::HashMap<_, _> = url.query_pairs().collect();
+
+    assert_eq!(url.path(), "/auth/logout");
+    let next = url
+        .query_pairs()
+        .find(|(key, _)| key == "next")
+        .expect("carries a next parameter")
+        .1
+        .into_owned();
+
+    // A path and query, never an absolute URL: the server refuses external
+    // targets so this cannot be turned into an open redirect.
+    assert!(next.starts_with("/oauth/authorize?"), "{next}");
+
+    let authorize = Url::parse("https://scribe.example/")
+        .unwrap()
+        .join(&next)
+        .unwrap();
+    let pairs: std::collections::HashMap<_, _> = authorize.query_pairs().collect();
+    assert_eq!(pairs.get("response_type").unwrap(), "code");
     assert_eq!(pairs.get("code_challenge").unwrap(), pkce.challenge());
     assert_eq!(pairs.get("code_challenge_method").unwrap(), "S256");
     assert_eq!(pairs.get("redirect_uri").unwrap(), "myapp://callback");
