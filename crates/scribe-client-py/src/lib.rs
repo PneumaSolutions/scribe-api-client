@@ -35,11 +35,12 @@ use channel::PyDocumentChannel;
 use client::PyScribeClient;
 use error::{
     ConversionInProgressError, ConversionNotCompleteError, ForbiddenError, InvalidGrantError,
-    NeedsPurchaseError, NotFoundError, NotTrashedError, RateLimitedError, ScribeApiError,
+    NeedsPurchaseError, NotFoundError, NotTrashedError, PasswordRequiredError, RateLimitedError,
+    ScribeApiError,
 };
 use model::{
-    PyDocumentList, PyDocumentSummary, PyOutput, PyPkceChallenge, PySettings, PyTokenSet,
-    PyTrashedDocument,
+    PyDocumentList, PyDocumentSummary, PyOutput, PyOutputList, PyPkceChallenge, PySettings,
+    PyTokenSet, PyTrashedDocument,
 };
 
 #[pymodule]
@@ -48,6 +49,7 @@ fn scribe_client(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyTokenSet>()?;
     m.add_class::<PyAuthClient>()?;
     m.add_class::<PyOutput>()?;
+    m.add_class::<PyOutputList>()?;
     m.add_class::<PyDocumentSummary>()?;
     m.add_class::<PyDocumentList>()?;
     m.add_class::<PyTrashedDocument>()?;
@@ -69,5 +71,9 @@ fn scribe_client(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     m.add("RateLimitedError", py.get_type::<RateLimitedError>())?;
     m.add("NeedsPurchaseError", py.get_type::<NeedsPurchaseError>())?;
+    m.add(
+        "PasswordRequiredError",
+        py.get_type::<PasswordRequiredError>(),
+    )?;
     Ok(())
 }

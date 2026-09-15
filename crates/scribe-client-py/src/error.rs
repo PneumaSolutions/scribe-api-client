@@ -23,6 +23,8 @@ create_exception!(scribe_client, RateLimitedError, ScribeApiError);
 
 create_exception!(scribe_client, NeedsPurchaseError, ScribeApiError);
 
+create_exception!(scribe_client, PasswordRequiredError, ScribeApiError);
+
 pub(crate) fn to_py_err(err: ScribeError) -> PyErr {
     match err {
         ScribeError::InvalidGrant { message } => InvalidGrantError::new_err(message),
@@ -40,6 +42,7 @@ pub(crate) fn to_py_err(err: ScribeError) -> PyErr {
             message,
             purchase_url,
         } => NeedsPurchaseError::new_err(format!("{message} ({purchase_url})")),
+        ScribeError::PasswordRequired { message } => PasswordRequiredError::new_err(message),
         other => ScribeApiError::new_err(other.to_string()),
     }
 }

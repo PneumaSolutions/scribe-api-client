@@ -35,10 +35,22 @@ impl PyDocumentChannel {
     /// current settings. Idempotent: if that format is already converting
     /// or complete, returns its existing output id. Returns immediately;
     /// progress arrives via subsequent `next_event()` calls.
-    fn start_conversion(&mut self, py: Python<'_>, format: &str) -> PyResult<String> {
+    ///
+    /// `password` unlocks a password-protected document; it's stored against
+    /// the document, so later conversions don't need it again. A wrong
+    /// password isn't detected here -- the converter rejects it later and an
+    /// `error` event with reason `invalid_password` arrives from
+    /// `next_event()`.
+    #[pyo3(signature = (format, password=None))]
+    fn start_conversion(
+        &mut self,
+        py: Python<'_>,
+        format: &str,
+        password: Option<&str>,
+    ) -> PyResult<String> {
         let format = parse_format(format)?;
         let channel = self.inner.as_mut().ok_or_else(channel_closed_err)?;
-        py.detach(|| runtime().block_on(channel.start_conversion(format)))
+        py.detach(|| runtime().block_on(channel.start_conversion(format, password)))
             .map_err(to_py_err)
     }
 

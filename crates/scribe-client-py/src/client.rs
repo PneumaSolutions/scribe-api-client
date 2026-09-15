@@ -13,8 +13,8 @@ use crate::{
     channel::PyDocumentChannel,
     error::to_py_err,
     model::{
-        dict_to_settings_update, parse_format, PyDocumentList, PyOutput, PySettings, PyTokenSet,
-        PyTrashedDocument, VoicesByDialect,
+        dict_to_settings_update, parse_format, PyDocumentList, PyOutputList, PySettings,
+        PyTokenSet, PyTrashedDocument, VoicesByDialect,
     },
     parse_url, runtime,
 };
@@ -40,26 +40,38 @@ impl PyScribeClient {
     /// Creates a document by uploading file bytes directly. Returns the new
     /// document's id. The server automatically starts an `html_stream`
     /// conversion.
+    ///
+    /// `password` unlocks a password-protected source file. Supply it when
+    /// the file is known to be protected; otherwise leave it unset and
+    /// handle the `password_required` channel event.
+    #[pyo3(signature = (file_name, bytes, password=None))]
     fn create_document_from_file(
         &self,
         py: Python<'_>,
         file_name: &str,
         bytes: &[u8],
+        password: Option<&str>,
     ) -> PyResult<String> {
         let source = DocumentSource::File {
             file_name: file_name.to_string(),
             bytes: bytes.to_vec(),
         };
-        py.detach(|| runtime().block_on(self.inner.create_document(source)))
+        py.detach(|| runtime().block_on(self.inner.create_document(source, password)))
             .map(|doc| doc.document_id)
             .map_err(to_py_err)
     }
 
     /// Creates a document by having the server fetch it from `url`.
     /// Returns the new document's id.
-    fn create_document_from_url(&self, py: Python<'_>, url: &str) -> PyResult<String> {
+    #[pyo3(signature = (url, password=None))]
+    fn create_document_from_url(
+        &self,
+        py: Python<'_>,
+        url: &str,
+        password: Option<&str>,
+    ) -> PyResult<String> {
         let source = DocumentSource::Url(url.to_string());
-        py.detach(|| runtime().block_on(self.inner.create_document(source)))
+        py.detach(|| runtime().block_on(self.inner.create_document(source, password)))
             .map(|doc| doc.document_id)
             .map_err(to_py_err)
     }
@@ -116,14 +128,9 @@ impl PyScribeClient {
             .map_err(to_py_err)
     }
 
-    fn list_outputs(&self, py: Python<'_>, document_id: &str) -> PyResult<Vec<PyOutput>> {
+    fn list_outputs(&self, py: Python<'_>, document_id: &str) -> PyResult<PyOutputList> {
         py.detach(|| runtime().block_on(self.inner.list_outputs(document_id)))
-            .map(|outputs| {
-                outputs
-                    .into_iter()
-                    .map(|inner| PyOutput { inner })
-                    .collect()
-            })
+            .map(|inner| PyOutputList { inner })
             .map_err(to_py_err)
     }
 

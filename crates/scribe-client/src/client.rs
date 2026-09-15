@@ -12,8 +12,8 @@ use crate::{
     model::{
         AccountInfo, BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect,
         DialectsResponse, DocumentList, DocumentListResponse, Language, LanguagesResponse,
-        NotificationSettings, Output, OutputFormat, OutputListResponse, Settings, SettingsUpdate,
-        TrashedDocument, TrashedDocumentListResponse, Voice, VoicesResponse,
+        NotificationSettings, OutputFormat, OutputList, OutputListResponse, Settings,
+        SettingsUpdate, TrashedDocument, TrashedDocumentListResponse, Voice, VoicesResponse,
     },
 };
 
@@ -91,12 +91,13 @@ impl ScribeClient {
     /// expiry tracking thought the token was still good.
     async fn force_refresh(&self) -> Result<String, ScribeError> {
         let mut tokens = self.tokens.lock().await;
-        let refresh_token = tokens
-            .refresh_token
-            .clone()
-            .ok_or_else(|| ScribeError::InvalidGrant {
-                message: "Your session has expired. Please sign in again.".to_string(),
-            })?;
+        let refresh_token =
+            tokens
+                .refresh_token
+                .clone()
+                .ok_or_else(|| ScribeError::InvalidGrant {
+                    message: "Your session has expired. Please sign in again.".to_string(),
+                })?;
         *tokens = self.auth.refresh(&refresh_token).await?;
         Ok(tokens.access_token.clone())
     }
@@ -107,9 +108,14 @@ impl ScribeClient {
     ///
     /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] if the request
     /// fails or the server rejects it.
+    /// `password` unlocks a password-protected source file. Supplying it up
+    /// front saves a round trip when the caller already knows the document
+    /// is protected; otherwise leave it `None` and handle the
+    /// `password_required` signal on the document channel.
     pub async fn create_document(
         &self,
         source: DocumentSource,
+        password: Option<&str>,
     ) -> Result<CreatedDocument, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path("/api/documents");
@@ -122,6 +128,10 @@ impl ScribeClient {
                 DocumentSource::Url(source_url) => {
                     multipart::Form::new().text("document[url]", source_url.clone())
                 }
+            };
+            let form = match password {
+                Some(password) => form.text("document[password]", password.to_string()),
+                None => form,
             };
             self.http
                 .post(url.clone())
@@ -292,13 +302,16 @@ impl ScribeClient {
     /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
     /// document doesn't exist or isn't owned by the caller, or
     /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures.
-    pub async fn list_outputs(&self, document_id: &str) -> Result<Vec<Output>, ScribeError> {
+    pub async fn list_outputs(&self, document_id: &str) -> Result<OutputList, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path(&format!("/api/documents/{document_id}/outputs"));
         let response: OutputListResponse = self
             .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
             .await?;
-        Ok(response.outputs)
+        Ok(OutputList {
+            outputs: response.outputs,
+            is_password_needed: response.is_password_needed,
+        })
     }
 
     /// # Errors
@@ -365,8 +378,10 @@ impl ScribeClient {
         let mut url = self.base_url.clone();
         url.set_path("/api/devices");
         let body = serde_json::json!({ "token": token, "platform": platform });
-        self.with_auth_retry_raw(|token| self.http.post(url.clone()).bearer_auth(token).json(&body))
-            .await?;
+        self.with_auth_retry_raw(|token| {
+            self.http.post(url.clone()).bearer_auth(token).json(&body)
+        })
+        .await?;
         Ok(())
     }
 

@@ -64,6 +64,8 @@ including creating a document and converting it.
 document_id = client.create_document_from_file("report.docx", data)
 # ...or have the server fetch it from a URL.
 document_id = client.create_document_from_url("https://example.com/report.pdf")
+# Both take an optional password, for a file you already know is protected.
+document_id = client.create_document_from_file("locked.pdf", data, "hunter2")
 ```
 
 Creating a document automatically starts an `html_stream` conversion (a
@@ -83,9 +85,10 @@ for doc in result.documents:
 client.delete_document(document_id)
 ```
 
-`list_outputs(document_id)` returns just the `Output` rows for one
-document (what `list_documents()` embeds per-document, without the
-document metadata); `get_settings`/`update_settings` read and partially
+`list_outputs(document_id)` returns an `OutputList` for one document —
+`.outputs`, the same rows `list_documents()` embeds per-document without
+the document metadata, plus `.is_password_needed`;
+`get_settings`/`update_settings` read and partially
 update a document's conversion settings (language, TTS voice, Braille
 table, and so on — see `Settings`'s attributes for the full set).
 
@@ -137,6 +140,7 @@ dict tagged by `event["type"]`:
 | `"chunk"`               | `content`                          | a chunk of streamed HTML (`html_stream` only) |
 | `"conversion_complete"` | `format`, `output_id`              | a format finished converting                 |
 | `"error"`               | `reason`                           | an out-of-band error unrelated to a specific call |
+| `"password_required"`   | —                                  | the document is protected and hasn't been unlocked |
 
 `stage` is one of `"queue"`, `"start"`, `"convert"`,
 `"add_image_descriptions"`, or `"complete"`.
@@ -148,6 +152,32 @@ already converting (or complete) when you joined — including incomplete
 to those automatically when they're not finished yet.) Filter on
 `event["format"]` if you only care about one format at a time, as in the
 example above.
+
+## Password-protected documents
+
+A protected PDF can't be converted until its password is supplied. The
+server reports this in three places: `password_required` is pushed as
+soon as you join the channel, `start_conversion` raises
+`PasswordRequiredError` rather than queueing work that can only fail, and
+`is_password_needed` is set on the document in `list_documents()` and
+`list_outputs()`.
+
+Pass the password to `start_conversion` to unlock and convert in one
+call. It's stored against the document, so converting it to further
+formats later doesn't need it again.
+
+```python
+try:
+    output_id = channel.start_conversion("pdf")
+except PasswordRequiredError:
+    output_id = channel.start_conversion("pdf", prompt_for_password())
+```
+
+A *wrong* password isn't rejected here — the server accepts it, the
+converter fails on it, and an `"error"` event with reason
+`"invalid_password"` arrives from `next_event()`. Prompt again and call
+`start_conversion` again. A locked document has no outputs at all, so
+there's nothing to clean up between attempts.
 
 Always `close()` the channel when you're done with it (a `try`/`finally`
 is the easiest way, as above) — it holds an open WebSocket connection.
@@ -163,6 +193,7 @@ All exceptions are subclasses of `ScribeApiError`:
 | `ConversionNotCompleteError`    | `download_output` was called before that format finished converting       |
 | `ConversionInProgressError`     | `start_conversion` was called while a different conversion is already running |
 | `RateLimitedError`              | `start_conversion` was called too many times too quickly                   |
+| `PasswordRequiredError`         | the document is a protected file and no password has been supplied         |
 | `NeedsPurchaseError`            | the account doesn't have enough page credits for the requested conversion   |
 | `InvalidGrantError`             | an OAuth code, refresh token, or PKCE verifier didn't check out            |
 | `ScribeApiError` (base)         | anything else the server rejected, or a connection-level failure          |

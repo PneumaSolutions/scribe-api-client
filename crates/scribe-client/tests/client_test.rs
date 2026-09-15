@@ -36,10 +36,13 @@ async fn create_document_from_file_returns_document_id() {
         .await;
     let client = client_for(&server, valid_tokens());
     let doc = client
-        .create_document(DocumentSource::File {
-            file_name: "report.docx".into(),
-            bytes: b"pretend docx bytes".to_vec(),
-        })
+        .create_document(
+            DocumentSource::File {
+                file_name: "report.docx".into(),
+                bytes: b"pretend docx bytes".to_vec(),
+            },
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(doc.document_id, "doc-1");
@@ -71,7 +74,7 @@ async fn list_outputs_parses_in_progress_and_complete_rows() {
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
-    let outputs = client.list_outputs("doc-1").await.unwrap();
+    let outputs = client.list_outputs("doc-1").await.unwrap().outputs;
     assert_eq!(outputs.len(), 2);
     assert_eq!(outputs[0].format, OutputFormat::HtmlStream);
     assert!(!outputs[0].stage.is_complete());
@@ -107,7 +110,10 @@ async fn download_output_maps_conversion_not_complete() {
         .await;
     let client = client_for(&server, valid_tokens());
     let result = client.download_output("doc-1", OutputFormat::Pdf).await;
-    assert!(matches!(result, Err(ScribeError::ConversionNotComplete { .. })));
+    assert!(matches!(
+        result,
+        Err(ScribeError::ConversionNotComplete { .. })
+    ));
 }
 
 #[tokio::test]
@@ -123,7 +129,10 @@ async fn create_document_from_url_returns_document_id() {
         .await;
     let client = client_for(&server, valid_tokens());
     let doc = client
-        .create_document(DocumentSource::Url("https://example.com/report.pdf".into()))
+        .create_document(
+            DocumentSource::Url("https://example.com/report.pdf".into()),
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(doc.document_id, "doc-2");
@@ -265,7 +274,7 @@ async fn proactive_refresh_happens_before_expiry_without_a_401() {
         expires_at: Some(OffsetDateTime::now_utc() + time::Duration::seconds(5)),
     };
     let client = client_for(&server, about_to_expire);
-    let outputs = client.list_outputs("doc-1").await.unwrap();
+    let outputs = client.list_outputs("doc-1").await.unwrap().outputs;
     assert!(outputs.is_empty());
 }
 
@@ -303,7 +312,7 @@ async fn a_401_triggers_refresh_and_retries_once() {
         expires_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
     };
     let client = client_for(&server, stale_tokens);
-    let outputs = client.list_outputs("doc-1").await.unwrap();
+    let outputs = client.list_outputs("doc-1").await.unwrap().outputs;
     assert!(outputs.is_empty());
 }
 
@@ -500,4 +509,72 @@ async fn list_trashed_documents_parses_rows() {
         documents[0].permanently_delete_at,
         "2026-08-10T13:46:26.000000Z"
     );
+}
+
+#[tokio::test]
+async fn list_outputs_reports_a_locked_document() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "outputs": [],
+            "is_password_needed": true
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let list = client.list_outputs("doc-1").await.unwrap();
+    assert!(list.outputs.is_empty());
+    assert!(list.is_password_needed);
+}
+
+#[tokio::test]
+async fn list_documents_reports_a_locked_document() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "documents": [
+                {
+                    "id": "doc-1",
+                    "title": "Locked",
+                    "page_count": null,
+                    "inserted_at": "2026-09-15T00:00:00Z",
+                    "is_password_needed": true,
+                    "outputs": []
+                }
+            ],
+            "pages_remaining": 3
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let list = client.list_documents().await.unwrap();
+    assert!(list.documents[0].is_password_needed);
+}
+
+#[tokio::test]
+async fn create_document_sends_a_password_when_one_is_given() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/documents"))
+        .and(body_string_contains("document[password]"))
+        .and(body_string_contains("hunter2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "document_id": "doc-1"
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let doc = client
+        .create_document(
+            DocumentSource::File {
+                file_name: "locked.pdf".into(),
+                bytes: b"%PDF".to_vec(),
+            },
+            Some("hunter2"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(doc.document_id, "doc-1");
 }

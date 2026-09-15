@@ -40,6 +40,11 @@ pub enum ChannelEvent {
     /// The server reported an error unrelated to a specific request we
     /// made (e.g. a conversion failed after it had already started).
     Error { reason: String },
+    /// The document is password-protected and hasn't been unlocked yet.
+    /// Pushed on join, since a locked document has no outputs and would
+    /// otherwise look like a silent channel. Prompt for the password and
+    /// pass it to [`DocumentChannel::start_conversion`].
+    PasswordRequired,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,12 +111,27 @@ impl DocumentChannel {
     /// document doesn't exist or isn't owned by the caller,
     /// [`ScribeError::ConversionInProgress`] if a different non-preview
     /// conversion is already running, [`ScribeError::RateLimited`] if too
-    /// many conversions were started too quickly, or
+    /// many conversions were started too quickly,
     /// [`ScribeError::NeedsPurchase`] if the account is out of page
-    /// credits.
-    pub async fn start_conversion(&mut self, format: OutputFormat) -> Result<String, ScribeError> {
+    /// credits, or [`ScribeError::PasswordRequired`] if the document is a
+    /// protected file and `password` was `None` or wrong.
+    ///
+    /// `password` unlocks a password-protected document. It's stored
+    /// against the document, so later conversions of other formats don't
+    /// need it again. A wrong password isn't detected here — the server
+    /// accepts it, the converter rejects it, and an
+    /// [`ChannelEvent::Error`] with reason `invalid_password` arrives from
+    /// [`Self::next_event`]; retry this call with a corrected password.
+    pub async fn start_conversion(
+        &mut self,
+        format: OutputFormat,
+        password: Option<&str>,
+    ) -> Result<String, ScribeError> {
         let ref_ = self.take_ref();
-        let payload = serde_json::json!({ "format": format.as_str() });
+        let mut payload = serde_json::json!({ "format": format.as_str() });
+        if let Some(password) = password {
+            payload["password"] = Value::String(password.to_string());
+        }
         send_frame(
             &mut self.ws,
             &self.join_ref,
@@ -246,6 +266,7 @@ fn parse_event(event: &str, payload: &Value) -> Option<ChannelEvent> {
         "error" => Some(ChannelEvent::Error {
             reason: payload.get("reason")?.as_str()?.to_string(),
         }),
+        "password_required" => Some(ChannelEvent::PasswordRequired),
         _ => None,
     }
 }
@@ -271,6 +292,10 @@ fn map_channel_error(payload: Value) -> ScribeError {
         },
         "rate_limited" => ScribeError::RateLimited {
             message: "Rate limited, try again shortly.".to_string(),
+        },
+        "password_required" => ScribeError::PasswordRequired {
+            message: "This document is password-protected. Enter its password to continue."
+                .to_string(),
         },
         "needs_purchase" => ScribeError::NeedsPurchase {
             message: "You need to purchase more pages to do that.".to_string(),

@@ -145,6 +145,25 @@ impl From<scribe_client_core::Output> for Output {
     }
 }
 
+/// The result of `list_outputs()`.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct OutputList {
+    pub outputs: Vec<Output>,
+    /// The document is a password-protected file that hasn't been unlocked
+    /// yet. It has no outputs at all while this is true, so an empty
+    /// `outputs` alone doesn't distinguish "locked" from "not started".
+    pub is_password_needed: bool,
+}
+
+impl From<scribe_client_core::OutputList> for OutputList {
+    fn from(l: scribe_client_core::OutputList) -> Self {
+        OutputList {
+            outputs: l.outputs.into_iter().map(Into::into).collect(),
+            is_password_needed: l.is_password_needed,
+        }
+    }
+}
+
 /// The result of `list_documents()`, including the caller's page credit balance.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct DocumentList {
@@ -160,6 +179,9 @@ pub struct DocumentSummary {
     pub page_count: Option<i64>,
     /// ISO 8601 UTC timestamp of when the document was created.
     pub inserted_at: String,
+    /// The document is a password-protected file that hasn't been unlocked
+    /// yet, so it has no outputs and nothing can be downloaded from it.
+    pub is_password_needed: bool,
     pub outputs: Vec<Output>,
 }
 
@@ -170,6 +192,7 @@ impl From<scribe_client_core::DocumentSummary> for DocumentSummary {
             title: d.title,
             page_count: d.page_count,
             inserted_at: d.inserted_at,
+            is_password_needed: d.is_password_needed,
             outputs: d.outputs.into_iter().map(Into::into).collect(),
         }
     }

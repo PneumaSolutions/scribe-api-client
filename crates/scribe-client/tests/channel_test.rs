@@ -126,7 +126,10 @@ async fn join_then_start_conversion_then_events() {
     .await;
     let client = client_for(base_url);
     let mut channel = client.open_document_channel("doc-1").await.unwrap();
-    let output_id = channel.start_conversion(OutputFormat::Pdf).await.unwrap();
+    let output_id = channel
+        .start_conversion(OutputFormat::Pdf, None)
+        .await
+        .unwrap();
     assert_eq!(output_id, "out-1");
     match channel.next_event().await.unwrap() {
         ChannelEvent::Status {
@@ -208,11 +211,168 @@ async fn start_conversion_error_maps_needs_purchase() {
     .await;
     let client = client_for(base_url);
     let mut channel = client.open_document_channel("doc-1").await.unwrap();
-    let result = channel.start_conversion(OutputFormat::Pdf).await;
+    let result = channel.start_conversion(OutputFormat::Pdf, None).await;
     match result {
         Err(ScribeError::NeedsPurchase { purchase_url, .. }) => {
             assert_eq!(purchase_url, "https://example.test/buy");
         }
         other => panic!("expected NeedsPurchase, got {other:?}"),
     }
+}
+
+/// The password only rides along when one was actually supplied — sending
+/// `"password": null` on every conversion would be indistinguishable, at the
+/// server, from a deliberate attempt to clear it.
+#[tokio::test]
+async fn start_conversion_omits_the_password_key_when_none_is_given() {
+    let base_url = start_fake_server(|mut ws| {
+        Box::pin(async move {
+            let (join_ref, ref_, topic, _event, _payload) = recv(&mut ws).await;
+            let join_ref = join_ref.unwrap();
+            send(
+                &mut ws,
+                &join_ref,
+                Some(&ref_.unwrap()),
+                &topic,
+                "phx_reply",
+                serde_json::json!({"status": "ok", "response": {}}),
+            )
+            .await;
+            let (_, ref_, topic, event, payload) = recv(&mut ws).await;
+            assert_eq!(event, "start_conversion");
+            assert_eq!(payload["format"], "pdf");
+            assert!(payload.get("password").is_none());
+            send(
+                &mut ws,
+                &join_ref,
+                Some(&ref_.unwrap()),
+                &topic,
+                "phx_reply",
+                serde_json::json!({"status": "ok", "response": {"output_id": "out-1"}}),
+            )
+            .await;
+        })
+    })
+    .await;
+    let client = client_for(base_url);
+    let mut channel = client.open_document_channel("doc-1").await.unwrap();
+    let output_id = channel
+        .start_conversion(OutputFormat::Pdf, None)
+        .await
+        .unwrap();
+    assert_eq!(output_id, "out-1");
+}
+
+#[tokio::test]
+async fn start_conversion_sends_the_password_when_one_is_given() {
+    let base_url = start_fake_server(|mut ws| {
+        Box::pin(async move {
+            let (join_ref, ref_, topic, _event, _payload) = recv(&mut ws).await;
+            let join_ref = join_ref.unwrap();
+            send(
+                &mut ws,
+                &join_ref,
+                Some(&ref_.unwrap()),
+                &topic,
+                "phx_reply",
+                serde_json::json!({"status": "ok", "response": {}}),
+            )
+            .await;
+            let (_, ref_, topic, event, payload) = recv(&mut ws).await;
+            assert_eq!(event, "start_conversion");
+            assert_eq!(payload["password"], "hunter2");
+            send(
+                &mut ws,
+                &join_ref,
+                Some(&ref_.unwrap()),
+                &topic,
+                "phx_reply",
+                serde_json::json!({"status": "ok", "response": {"output_id": "out-1"}}),
+            )
+            .await;
+        })
+    })
+    .await;
+    let client = client_for(base_url);
+    let mut channel = client.open_document_channel("doc-1").await.unwrap();
+    let output_id = channel
+        .start_conversion(OutputFormat::Pdf, Some("hunter2"))
+        .await
+        .unwrap();
+    assert_eq!(output_id, "out-1");
+}
+
+#[tokio::test]
+async fn start_conversion_maps_password_required_to_its_own_error() {
+    let base_url = start_fake_server(|mut ws| {
+        Box::pin(async move {
+            let (join_ref, ref_, topic, _event, _payload) = recv(&mut ws).await;
+            let join_ref = join_ref.unwrap();
+            send(
+                &mut ws,
+                &join_ref,
+                Some(&ref_.unwrap()),
+                &topic,
+                "phx_reply",
+                serde_json::json!({"status": "ok", "response": {}}),
+            )
+            .await;
+            let (_, ref_, topic, _event, _payload) = recv(&mut ws).await;
+            send(
+                &mut ws,
+                &join_ref,
+                Some(&ref_.unwrap()),
+                &topic,
+                "phx_reply",
+                serde_json::json!({
+                    "status": "error",
+                    "response": {"reason": "password_required"}
+                }),
+            )
+            .await;
+        })
+    })
+    .await;
+    let client = client_for(base_url);
+    let mut channel = client.open_document_channel("doc-1").await.unwrap();
+    let err = channel
+        .start_conversion(OutputFormat::Pdf, None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ScribeError::PasswordRequired { .. }));
+}
+
+#[tokio::test]
+async fn a_password_required_push_surfaces_as_an_event() {
+    let base_url = start_fake_server(|mut ws| {
+        Box::pin(async move {
+            let (join_ref, ref_, topic, _event, _payload) = recv(&mut ws).await;
+            let join_ref = join_ref.unwrap();
+            send(
+                &mut ws,
+                &join_ref,
+                Some(&ref_.unwrap()),
+                &topic,
+                "phx_reply",
+                serde_json::json!({"status": "ok", "response": {}}),
+            )
+            .await;
+            send(
+                &mut ws,
+                &join_ref,
+                None,
+                &topic,
+                "password_required",
+                serde_json::json!({}),
+            )
+            .await;
+        })
+    })
+    .await;
+    let client = client_for(base_url);
+    let mut channel = client.open_document_channel("doc-1").await.unwrap();
+    assert_eq!(
+        channel.next_event().await.unwrap(),
+        ChannelEvent::PasswordRequired
+    );
 }

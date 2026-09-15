@@ -6,7 +6,7 @@ use scribe_client_core::{DocumentSource, ScribeClient, SettingsUpdate as CoreSet
 
 use crate::{
     http_client, parse_url, runtime, AccountInfo, BrailleTable, CreatedDocument, Dialect,
-    DocumentList, FfiDocumentChannel, Language, NotificationSettings, Output, OutputFormat,
+    DocumentList, FfiDocumentChannel, Language, NotificationSettings, OutputFormat, OutputList,
     ScribeError, Settings, SettingsUpdate, TokenSet, TrashedDocument, Voice,
 };
 
@@ -40,24 +40,35 @@ impl FfiScribeClient {
         runtime().block_on(self.inner.current_tokens()).into()
     }
 
+    /// `password` unlocks a password-protected source file. Supply it when
+    /// the caller already knows the file is protected; otherwise leave it
+    /// unset and handle `ChannelEvent::PasswordRequired` on the document
+    /// channel.
+    #[uniffi::method(default(password = None))]
     pub fn create_document_from_file(
         &self,
         file_name: String,
         bytes: Vec<u8>,
+        password: Option<String>,
     ) -> Result<CreatedDocument, ScribeError> {
         let source = DocumentSource::File { file_name, bytes };
         runtime()
-            .block_on(self.inner.create_document(source))
+            .block_on(self.inner.create_document(source, password.as_deref()))
             .map(|d| CreatedDocument {
                 document_id: d.document_id,
             })
             .map_err(Into::into)
     }
 
-    pub fn create_document_from_url(&self, url: String) -> Result<CreatedDocument, ScribeError> {
+    #[uniffi::method(default(password = None))]
+    pub fn create_document_from_url(
+        &self,
+        url: String,
+        password: Option<String>,
+    ) -> Result<CreatedDocument, ScribeError> {
         let source = DocumentSource::Url(url);
         runtime()
-            .block_on(self.inner.create_document(source))
+            .block_on(self.inner.create_document(source, password.as_deref()))
             .map(|d| CreatedDocument {
                 document_id: d.document_id,
             })
@@ -135,10 +146,10 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    pub fn list_outputs(&self, document_id: String) -> Result<Vec<Output>, ScribeError> {
+    pub fn list_outputs(&self, document_id: String) -> Result<OutputList, ScribeError> {
         runtime()
             .block_on(self.inner.list_outputs(&document_id))
-            .map(|outs| outs.into_iter().map(Into::into).collect())
+            .map(Into::into)
             .map_err(Into::into)
     }
 

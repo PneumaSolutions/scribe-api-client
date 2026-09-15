@@ -98,9 +98,22 @@ pub struct CreatedDocument {
     pub document_id: String,
 }
 
+/// The result of `GET /api/documents/:id/outputs`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OutputList {
+    pub outputs: Vec<Output>,
+    /// The document is a password-protected file that hasn't been unlocked
+    /// yet. It has no outputs at all while this is true, so an empty
+    /// `outputs` alone doesn't distinguish "locked" from "not started".
+    #[serde(default)]
+    pub is_password_needed: bool,
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct OutputListResponse {
     pub outputs: Vec<Output>,
+    #[serde(default)]
+    pub is_password_needed: bool,
 }
 
 /// One row from `GET /api/documents`.
@@ -113,6 +126,10 @@ pub struct DocumentSummary {
     pub page_count: Option<i64>,
     /// ISO 8601 UTC timestamp of when the document was created.
     pub inserted_at: String,
+    /// The document is a password-protected file that hasn't been unlocked
+    /// yet, so it has no outputs and nothing can be downloaded from it.
+    #[serde(default)]
+    pub is_password_needed: bool,
     pub outputs: Vec<Output>,
 }
 

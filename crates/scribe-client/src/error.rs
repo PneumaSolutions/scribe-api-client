@@ -46,7 +46,14 @@ pub enum ScribeError {
     #[error("{message}")]
     RateLimited { message: String },
     #[error("{message}")]
-    NeedsPurchase { message: String, purchase_url: String },
+    NeedsPurchase {
+        message: String,
+        purchase_url: String,
+    },
+    /// The document is a password-protected file that hasn't been unlocked
+    /// yet. Prompt for the password and retry the same call with it.
+    #[error("{message}")]
+    PasswordRequired { message: String },
     #[error("{message}")]
     Channel { message: String },
 }

@@ -208,7 +208,7 @@ def test_list_outputs_parses_in_progress_and_complete_rows(mock_server):
         },
     )
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
-    outputs = client.list_outputs("doc-1")
+    outputs = client.list_outputs("doc-1").outputs
     assert len(outputs) == 2
     assert outputs[0].format == "html_stream"
     assert outputs[0].stage == "convert"
@@ -296,6 +296,37 @@ def test_a_401_triggers_refresh_and_retries_once(mock_server):
     )
     stale_tokens = TokenSet("at-stale", "rt-stale")
     client = ScribeClient(mock_server.base_url, "test-client-id", stale_tokens)
-    outputs = client.list_outputs("doc-1")
+    outputs = client.list_outputs("doc-1").outputs
     assert outputs == []
     assert call_count["outputs"] == 2
+
+
+def test_list_outputs_reports_a_locked_document(mock_server):
+    mock_server.add_json_route(
+        "GET",
+        "/api/documents/doc-1/outputs",
+        200,
+        {"outputs": [], "is_password_needed": True},
+    )
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    result = client.list_outputs("doc-1")
+    assert result.outputs == []
+    assert result.is_password_needed is True
+
+
+def test_create_document_from_file_sends_the_password(mock_server):
+    mock_server.add_json_route("POST", "/api/documents", 200, {"document_id": "doc-1"})
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    document_id = client.create_document_from_file("locked.pdf", b"%PDF", "hunter2")
+    assert document_id == "doc-1"
+    [request] = mock_server.recorded_requests
+    assert b"document[password]" in request["body"]
+    assert b"hunter2" in request["body"]
+
+
+def test_create_document_from_file_omits_an_absent_password(mock_server):
+    mock_server.add_json_route("POST", "/api/documents", 200, {"document_id": "doc-1"})
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    client.create_document_from_file("plain.pdf", b"%PDF")
+    [request] = mock_server.recorded_requests
+    assert b"document[password]" not in request["body"]

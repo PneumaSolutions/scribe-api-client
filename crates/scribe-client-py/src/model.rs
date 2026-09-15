@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 
 use scribe_client_core::{
-    DocumentList, DocumentSummary, Output, OutputFormat, PkceChallenge, Settings, SettingsUpdate,
-    TokenSet, TrashedDocument,
+    DocumentList, DocumentSummary, Output, OutputFormat, OutputList, PkceChallenge, Settings,
+    SettingsUpdate, TokenSet, TrashedDocument,
 };
 
 pub(crate) fn parse_format(raw: &str) -> PyResult<OutputFormat> {
@@ -165,6 +165,13 @@ impl PyDocumentSummary {
         &self.inner.inserted_at
     }
 
+    /// The document is a password-protected file that hasn't been unlocked
+    /// yet, so it has no outputs and nothing can be downloaded from it.
+    #[getter]
+    fn is_password_needed(&self) -> bool {
+        self.inner.is_password_needed
+    }
+
     #[getter]
     fn outputs(&self) -> Vec<PyOutput> {
         self.inner
@@ -179,6 +186,41 @@ impl PyDocumentSummary {
         format!(
             "DocumentSummary(id={:?}, title={:?})",
             self.inner.id, self.inner.title
+        )
+    }
+}
+
+/// The result of `list_outputs()`.
+#[pyclass(name = "OutputList")]
+pub(crate) struct PyOutputList {
+    pub(crate) inner: OutputList,
+}
+
+#[pymethods]
+impl PyOutputList {
+    #[getter]
+    fn outputs(&self) -> Vec<PyOutput> {
+        self.inner
+            .outputs
+            .iter()
+            .cloned()
+            .map(|inner| PyOutput { inner })
+            .collect()
+    }
+
+    /// The document is a password-protected file that hasn't been unlocked
+    /// yet. It has no outputs at all while this is true, so an empty
+    /// `outputs` alone doesn't distinguish "locked" from "not started".
+    #[getter]
+    fn is_password_needed(&self) -> bool {
+        self.inner.is_password_needed
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "OutputList(outputs={}, is_password_needed={})",
+            self.inner.outputs.len(),
+            self.inner.is_password_needed
         )
     }
 }

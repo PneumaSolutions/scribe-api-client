@@ -32,6 +32,10 @@ pub enum ScribeError {
         message: String,
         purchase_url: String,
     },
+    /// The document is a password-protected file that hasn't been unlocked
+    /// yet. Prompt for the password and retry with it.
+    #[error("{message}")]
+    PasswordRequired { message: String },
     #[error("channel closed before a reply arrived")]
     ChannelClosed,
     #[error("{message}")]
@@ -79,6 +83,9 @@ impl From<scribe_client_core::ScribeError> for ScribeError {
             }
             scribe_client_core::ScribeError::RateLimited { message } => {
                 Self::RateLimited { message }
+            }
+            scribe_client_core::ScribeError::PasswordRequired { message } => {
+                Self::PasswordRequired { message }
             }
             scribe_client_core::ScribeError::NeedsPurchase {
                 message,

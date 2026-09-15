@@ -121,7 +121,7 @@ async fn ffi_join_start_conversion_and_events() {
     let client = FfiScribeClient::new(base_url, "test-client-id".into(), valid_tokens()).unwrap();
     let (output_id, first_event, second_event) = tokio::task::spawn_blocking(move || {
         let channel = client.open_document_channel("doc-1".into()).unwrap();
-        let output_id = channel.start_conversion(OutputFormat::Pdf).unwrap();
+        let output_id = channel.start_conversion(OutputFormat::Pdf, None).unwrap();
         let first_event = channel.next_event().unwrap();
         let second_event = channel.next_event().unwrap();
         (output_id, first_event, second_event)
@@ -212,7 +212,7 @@ async fn ffi_start_conversion_maps_needs_purchase() {
     let client = FfiScribeClient::new(base_url, "test-client-id".into(), valid_tokens()).unwrap();
     let result = tokio::task::spawn_blocking(move || {
         let channel = client.open_document_channel("doc-1".into()).unwrap();
-        channel.start_conversion(OutputFormat::Pdf)
+        channel.start_conversion(OutputFormat::Pdf, None)
     })
     .await
     .unwrap();

@@ -27,6 +27,11 @@ pub enum ChannelEvent {
     /// The server reported an error unrelated to a specific request the
     /// app made (e.g. a conversion failed after it had already started).
     Error { reason: String },
+    /// The document is password-protected and hasn't been unlocked yet.
+    /// Pushed on join, since a locked document has no outputs and would
+    /// otherwise look like a silent channel. Prompt for the password and
+    /// pass it to `start_conversion`.
+    PasswordRequired,
 }
 
 impl From<CoreChannelEvent> for ChannelEvent {
@@ -49,6 +54,7 @@ impl From<CoreChannelEvent> for ChannelEvent {
                 }
             }
             CoreChannelEvent::Error { reason } => Self::Error { reason },
+            CoreChannelEvent::PasswordRequired => Self::PasswordRequired,
         }
     }
 }
@@ -95,16 +101,26 @@ impl FfiDocumentChannel {
     /// non-preview conversion is already running,
     /// [`ScribeError::RateLimited`] if too many conversions were started
     /// too quickly, [`ScribeError::NeedsPurchase`] if the account is out
-    /// of page credits, or [`ScribeError::ChannelClosed`] if the channel
-    /// was already closed.
-    pub fn start_conversion(&self, format: OutputFormat) -> Result<String, ScribeError> {
+    /// of page credits, [`ScribeError::PasswordRequired`] if the document
+    /// is a protected file and `password` was absent or wrong, or
+    /// [`ScribeError::ChannelClosed`] if the channel was already closed.
+    ///
+    /// A wrong `password` isn't detected here: the server accepts it, the
+    /// converter rejects it, and a `ChannelEvent::Error` with reason
+    /// `invalid_password` arrives from `next_event()`.
+    #[uniffi::method(default(password = None))]
+    pub fn start_conversion(
+        &self,
+        format: OutputFormat,
+        password: Option<String>,
+    ) -> Result<String, ScribeError> {
         let mut guard = self
             .inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let channel = guard.as_mut().ok_or_else(channel_closed_err)?;
         runtime()
-            .block_on(channel.start_conversion(format.into()))
+            .block_on(channel.start_conversion(format.into(), password.as_deref()))
             .map_err(Into::into)
     }
 
