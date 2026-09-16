@@ -21,7 +21,18 @@ WORKSPACE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$WORKSPACE_DIR"
 TARGET_DIR="$WORKSPACE_DIR/target"
 OUTPUT_DIR="$WORKSPACE_DIR/output"
-IOS_PROJECT_DIR="$WORKSPACE_DIR/../scribe-ios/ScribeApp/Generated"
+# Where the generated Swift bindings are copied. Set IOS_PROJECT_DIR to
+# override. The fallback handles both checkouts this repo lives in: as a
+# submodule inside scribe-ios, and as a sibling directory next to it. Guessing
+# wrong here is quiet and expensive — the build carries on against whichever
+# stale bindings are already committed.
+if [ -z "${IOS_PROJECT_DIR:-}" ]; then
+    if [ -d "$WORKSPACE_DIR/../ScribeApp" ]; then
+        IOS_PROJECT_DIR="$WORKSPACE_DIR/../ScribeApp/Generated"
+    else
+        IOS_PROJECT_DIR="$WORKSPACE_DIR/../scribe-ios/ScribeApp/Generated"
+    fi
+fi
 
 # Targets we build for
 TARGET_DEVICE="aarch64-apple-ios"
