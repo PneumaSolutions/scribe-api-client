@@ -271,6 +271,16 @@ impl From<scribe_client_core::Settings> for Settings {
 #[derive(Debug, Clone, Default, uniffi::Record)]
 pub struct SettingsUpdate {
     pub language: Option<String>,
+    /// JSON object mapping a language code to its chosen dialect locale, such
+    /// as {"en":"en-US"}. The server stores this column as a string, so it goes
+    /// out as a JSON *string* even though reads return it already decoded (see
+    /// `Settings::dialects_json`). Taking it pre-serialized keeps that
+    /// asymmetry in one place instead of spreading it over every caller.
+    pub dialects_json: Option<String>,
+    /// JSON object mapping a dialect locale to its chosen voice short name,
+    /// such as {"en-US":"en-US-AriaNeural"}. Same string-on-write rule as
+    /// `dialects_json`.
+    pub voices_json: Option<String>,
     pub tts_gender: Option<String>,
     pub tts_rate: Option<f64>,
     pub braille_translation_table: Option<String>,
@@ -287,8 +297,8 @@ impl From<SettingsUpdate> for CoreSettingsUpdate {
     fn from(u: SettingsUpdate) -> Self {
         CoreSettingsUpdate {
             language: u.language,
-            dialects: None,
-            voices: None,
+            dialects: u.dialects_json.map(serde_json::Value::String),
+            voices: u.voices_json.map(serde_json::Value::String),
             tts_gender: u.tts_gender,
             tts_rate: u.tts_rate,
             braille_translation_table: u.braille_translation_table,
