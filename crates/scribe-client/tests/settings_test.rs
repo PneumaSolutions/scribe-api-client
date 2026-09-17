@@ -1,8 +1,8 @@
-use scribe_client::{ScribeClient, ScribeError, TokenSet};
+use scribe_client::{ScribeClient, ScribeError, SettingsUpdate, TokenSet};
 use time::OffsetDateTime;
 use url::Url;
 use wiremock::{
-    matchers::{method, path},
+    matchers::{body_string_contains, method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
@@ -219,4 +219,61 @@ async fn voices_parses_map_of_lists() {
     assert_eq!(en_us[0].0, "Jenny (Female)");
     assert_eq!(en_us[0].1, "en-US-JennyNeural");
     assert!(en_us[0].2);
+}
+
+#[tokio::test]
+async fn default_settings_reads_the_account_level_defaults() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/document_settings"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(settings_json()))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let settings = client.default_settings().await.unwrap();
+    assert_eq!(settings.language.as_deref(), Some("en"));
+    assert_eq!(settings.braille_translation_table, "en-us-g2.ctb");
+}
+
+/// The account endpoint carries no document id. Getting that wrong would send
+/// the defaults screen's edits to a document called "document_settings".
+#[tokio::test]
+async fn update_default_settings_patches_the_account_path() {
+    let server = MockServer::start().await;
+    Mock::given(method("PATCH"))
+        .and(path("/api/document_settings"))
+        .and(body_string_contains("\"tts_rate\":1.5"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(settings_json()))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let update = SettingsUpdate {
+        tts_rate: Some(1.5),
+        ..Default::default()
+    };
+    client.update_default_settings(&update).await.unwrap();
+}
+
+/// Same string-on-write rule as the per-document endpoint: the columns are
+/// strings even though reads come back decoded.
+#[tokio::test]
+async fn update_default_settings_sends_voices_as_a_json_string() {
+    let server = MockServer::start().await;
+    Mock::given(method("PATCH"))
+        .and(path("/api/document_settings"))
+        // The value is a JSON *string*, so the quotes inside it arrive escaped.
+        .and(body_string_contains(
+            r#""voices":"{\"en-US\":\"en-US-AriaNeural\"}""#,
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(settings_json()))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let update = SettingsUpdate {
+        voices: Some(serde_json::Value::String(
+            r#"{"en-US":"en-US-AriaNeural"}"#.to_owned(),
+        )),
+        ..Default::default()
+    };
+    client.update_default_settings(&update).await.unwrap();
 }

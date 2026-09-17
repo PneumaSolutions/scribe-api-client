@@ -366,6 +366,42 @@ impl ScribeClient {
             .await
     }
 
+    /// The caller's default conversion settings, which every new document's
+    /// settings are seeded from.
+    ///
+    /// Account-scoped, so there is no id: a user has exactly one set, and the
+    /// server creates it on first read rather than returning a 404.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn default_settings(&self) -> Result<Settings, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/document_settings");
+        self.with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await
+    }
+
+    /// Updates the caller's default conversion settings. Partial: fields left
+    /// `None` on `update` are not sent, so they keep their current value.
+    ///
+    /// Changing these does not touch documents that already exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure,
+    /// including validation errors on the settings themselves.
+    pub async fn update_default_settings(
+        &self,
+        update: &SettingsUpdate,
+    ) -> Result<Settings, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/document_settings");
+        let body = serde_json::json!({ "settings": update });
+        self.with_auth_retry(|token| self.http.patch(url.clone()).bearer_auth(token).json(&body))
+            .await
+    }
+
     /// Registers `token` (the hex-encoded APNs device token) so the server
     /// can send this device push notifications. Registration is an upsert —
     /// re-registering the same token re-points it at the current user (e.g.

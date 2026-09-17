@@ -1,5 +1,9 @@
 //! Guards the wire format of the TTS voice/dialect fields.
 //!
+//! Named ffi_settings rather than settings_update: Windows treats a binary
+//! whose name contains "update" as an installer and refuses to run it without
+//! elevation, so `cargo test` failed there with os error 740.
+//!
 //! The server's `document_settings.dialects` and `.voices` columns are strings
 //! holding JSON, but `GET` returns them already decoded. Writing them back as
 //! an object fails the Ecto cast, so these pin the string-on-write shape.

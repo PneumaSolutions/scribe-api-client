@@ -184,6 +184,24 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
+    pub fn default_settings(&self) -> Result<Settings, ScribeError> {
+        runtime()
+            .block_on(self.inner.default_settings())
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn update_default_settings(
+        &self,
+        update: SettingsUpdate,
+    ) -> Result<Settings, ScribeError> {
+        let core_update: CoreSettingsUpdate = update.into();
+        runtime()
+            .block_on(self.inner.update_default_settings(&core_update))
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
     pub fn register_device(&self, token: String, platform: String) -> Result<(), ScribeError> {
         runtime()
             .block_on(self.inner.register_device(&token, &platform))
