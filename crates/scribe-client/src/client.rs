@@ -11,7 +11,8 @@ use crate::{
     error::ScribeError,
     model::{
         AccountInfo, BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect,
-        DialectsResponse, DocumentList, DocumentListResponse, Language, LanguagesResponse,
+        DialectsResponse, DocumentList, DocumentListResponse, DocumentSummary, Language,
+        LanguagesResponse,
         NotificationSettings, OutputFormat, OutputList, OutputListResponse, Settings,
         SettingsUpdate, TrashedDocument, TrashedDocumentListResponse, Voice, VoicesResponse,
     },
@@ -362,6 +363,31 @@ impl ScribeClient {
         let mut url = self.base_url.clone();
         url.set_path(&format!("/api/documents/{document_id}/settings"));
         let body = serde_json::json!({ "settings": update });
+        self.with_auth_retry(|token| self.http.patch(url.clone()).bearer_auth(token).json(&body))
+            .await
+    }
+
+    /// Changes a document's title.
+    ///
+    /// Titles start life as the uploaded file name, which for a photo or a
+    /// share-sheet import is something like "IMG_6746783276432", so this is how
+    /// a caller fixes one after the fact. Returns the document as the list
+    /// endpoint describes it, so a caller can refresh its row from the result.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
+    /// document doesn't exist or isn't owned by the caller, or
+    /// [`ScribeError::Api`] if the title is rejected (it may not be blank and
+    /// is capped at 255 characters).
+    pub async fn rename_document(
+        &self,
+        document_id: &str,
+        title: &str,
+    ) -> Result<DocumentSummary, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path(&format!("/api/documents/{document_id}"));
+        let body = serde_json::json!({ "document": { "title": title } });
         self.with_auth_retry(|token| self.http.patch(url.clone()).bearer_auth(token).json(&body))
             .await
     }

@@ -6,7 +6,8 @@ use scribe_client_core::{DocumentSource, ScribeClient, SettingsUpdate as CoreSet
 
 use crate::{
     http_client, parse_url, runtime, AccountInfo, BrailleTable, CreatedDocument, Dialect,
-    DocumentList, FfiDocumentChannel, Language, NotificationSettings, OutputFormat, OutputList,
+    DocumentList, DocumentSummary, FfiDocumentChannel, Language, NotificationSettings, OutputFormat,
+    OutputList,
     ScribeError, Settings, SettingsUpdate, TokenSet, TrashedDocument, Voice,
 };
 
@@ -180,6 +181,17 @@ impl FfiScribeClient {
         let core_update: CoreSettingsUpdate = update.into();
         runtime()
             .block_on(self.inner.update_settings(&document_id, &core_update))
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn rename_document(
+        &self,
+        document_id: String,
+        title: String,
+    ) -> Result<DocumentSummary, ScribeError> {
+        runtime()
+            .block_on(self.inner.rename_document(&document_id, &title))
             .map(Into::into)
             .map_err(Into::into)
     }

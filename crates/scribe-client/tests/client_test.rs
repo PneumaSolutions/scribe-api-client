@@ -578,3 +578,53 @@ async fn create_document_sends_a_password_when_one_is_given() {
         .unwrap();
     assert_eq!(doc.document_id, "doc-1");
 }
+
+fn document_json(title: &str) -> serde_json::Value {
+    serde_json::json!({
+        "id": "doc-1",
+        "title": title,
+        "page_count": 3,
+        "inserted_at": "2026-09-18T15:04:05.000000Z",
+        "is_password_needed": false,
+        "outputs": []
+    })
+}
+
+#[tokio::test]
+async fn rename_document_patches_the_document_and_returns_it() {
+    let server = MockServer::start().await;
+    Mock::given(method("PATCH"))
+        .and(path("/api/documents/doc-1"))
+        .and(header("authorization", "Bearer at-valid"))
+        // The server reads the title out of a nested "document" object, the
+        // same shape its own form posts. A flat {"title": ...} is ignored.
+        .and(body_string_contains(r#""document":{"title":"Quarterly Earnings"}"#))
+        .respond_with(ResponseTemplate::new(200).set_body_json(document_json("Quarterly Earnings")))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let document = client
+        .rename_document("doc-1", "Quarterly Earnings")
+        .await
+        .unwrap();
+    assert_eq!(document.title.as_deref(), Some("Quarterly Earnings"));
+    assert_eq!(document.id, "doc-1");
+}
+
+#[tokio::test]
+async fn rename_document_maps_a_rejected_title_to_an_api_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("PATCH"))
+        .and(path("/api/documents/doc-1"))
+        .respond_with(ResponseTemplate::new(422).set_body_json(serde_json::json!({
+            "error": {"code": "unprocessable_entity", "message": "Title can't be blank"}
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let error = client.rename_document("doc-1", "").await.unwrap_err();
+    assert!(
+        matches!(error, ScribeError::Api { ref message, .. } if message.contains("blank")),
+        "got {error:?}"
+    );
+}
