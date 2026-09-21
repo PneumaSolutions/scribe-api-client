@@ -8,7 +8,7 @@ mod model;
 
 pub use auth::{AuthClient, PkceChallenge, TokenSet};
 pub use channel::{ChannelEvent, DocumentChannel};
-pub use client::{DocumentSource, ScribeClient};
+pub use client::{DocumentSource, ScribeClient, DELETE_ACCOUNT_PATH};
 pub use error::ScribeError;
 pub use model::{
     AccountInfo, BrailleTable, CreatedDocument, Dialect, DocumentList, DocumentSummary, Language,

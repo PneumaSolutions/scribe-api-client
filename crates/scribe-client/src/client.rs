@@ -46,6 +46,15 @@ struct ApiErrorBody {
 /// (`/api/documents*`). Holds a [`TokenSet`] and refreshes it
 /// automatically as needed, so construct one [`AuthClient`]/[`ScribeClient`]
 /// pair per authenticated user session and reuse it across requests.
+/// Path of the web page where a user requests, or cancels, deletion of their own
+/// account.
+///
+/// Mounted under `/settings` in the Pneumalith webapp, not at a top-level
+/// `/delete_account`. Reach it through [`ScribeClient::delete_account_url`] so the
+/// browser arrives already signed in. The same page starts a deletion and cancels
+/// a pending one, so one path serves both.
+pub const DELETE_ACCOUNT_PATH: &str = "/settings/delete_account";
+
 pub struct ScribeClient {
     http: reqwest::Client,
     base_url: Url,
@@ -390,6 +399,44 @@ impl ScribeClient {
         let body = serde_json::json!({ "document": { "title": title } });
         self.with_auth_retry(|token| self.http.patch(url.clone()).bearer_auth(token).json(&body))
             .await
+    }
+
+    /// A URL that signs the system browser in as this client's user, then lands
+    /// on `return_to_path`.
+    ///
+    /// The app and the browser do not share a session, so a bare link to a
+    /// settings page would greet the user with a login form. This hands the
+    /// app's access token to `/auth/browser_from_oauth`, which trades it for a
+    /// browser session and redirects.
+    ///
+    /// Refreshes the token first when it is near expiry. The server rejects a
+    /// stale one with a "Failed to log in" page, and that is the page the user
+    /// would land on.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::InvalidGrant`] if the token has expired and cannot
+    /// be refreshed, or [`ScribeError::Http`] if the refresh request fails.
+    pub async fn browser_entry_url(&self, return_to_path: &str) -> Result<String, ScribeError> {
+        let token = self.access_token().await?;
+        let state = serde_json::json!({ "return_to": return_to_path }).to_string();
+        let mut url = self.base_url.clone();
+        url.set_path("/auth/browser_from_oauth");
+        url.query_pairs_mut()
+            .append_pair("token", &token)
+            .append_pair("state", &state);
+        Ok(url.into())
+    }
+
+    /// The account-deletion page, signed in. App Store guideline 5.1.1(v)
+    /// requires an app with account creation to let users start deletion from
+    /// inside the app.
+    ///
+    /// # Errors
+    ///
+    /// As for [`ScribeClient::browser_entry_url`].
+    pub async fn delete_account_url(&self) -> Result<String, ScribeError> {
+        self.browser_entry_url(DELETE_ACCOUNT_PATH).await
     }
 
     /// The caller's default conversion settings, which every new document's

@@ -196,6 +196,15 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
+    /// The account-deletion page, with the browser already signed in. Open it
+    /// in the system browser, not a web view: the session is established in
+    /// the browser's own cookie store.
+    pub fn delete_account_url(&self) -> Result<String, ScribeError> {
+        runtime()
+            .block_on(self.inner.delete_account_url())
+            .map_err(Into::into)
+    }
+
     pub fn default_settings(&self) -> Result<Settings, ScribeError> {
         runtime()
             .block_on(self.inner.default_settings())

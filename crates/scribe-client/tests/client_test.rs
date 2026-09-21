@@ -628,3 +628,66 @@ async fn rename_document_maps_a_rejected_title_to_an_api_error() {
         "got {error:?}"
     );
 }
+
+fn query_params(url: &str) -> std::collections::HashMap<String, String> {
+    Url::parse(url).unwrap().query_pairs().into_owned().collect()
+}
+
+#[tokio::test]
+async fn delete_account_url_signs_the_browser_in_and_lands_on_the_settings_page() {
+    let server = MockServer::start().await;
+    let client = client_for(&server, valid_tokens());
+    let url = client.delete_account_url().await.unwrap();
+
+    let parsed = Url::parse(&url).unwrap();
+    assert_eq!(parsed.path(), "/auth/browser_from_oauth");
+    let params = query_params(&url);
+    assert_eq!(params.get("token").map(String::as_str), Some("at-valid"));
+    // The page is under /settings, not a top-level /delete_account.
+    assert_eq!(
+        params
+            .get("state")
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok()),
+        Some(serde_json::json!({ "return_to": scribe_client::DELETE_ACCOUNT_PATH }))
+    );
+    assert_eq!(scribe_client::DELETE_ACCOUNT_PATH, "/settings/delete_account");
+}
+
+/// The server answers a stale token with a "Failed to log in" page, which is
+/// exactly where the user would land. So the URL has to carry a fresh one.
+#[tokio::test]
+async fn delete_account_url_refreshes_a_token_that_is_about_to_expire() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/oauth/token"))
+        .and(body_string_contains("grant_type=refresh_token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "access_token": "at-fresh",
+            "refresh_token": "rt-fresh",
+            "expires_in": 3600
+        })))
+        .mount(&server)
+        .await;
+    let about_to_expire = TokenSet {
+        access_token: "at-stale".into(),
+        refresh_token: Some("rt-stale".into()),
+        expires_at: Some(OffsetDateTime::now_utc() + time::Duration::seconds(5)),
+    };
+    let client = client_for(&server, about_to_expire);
+    let url = client.delete_account_url().await.unwrap();
+    assert_eq!(query_params(&url).get("token").map(String::as_str), Some("at-fresh"));
+}
+
+#[tokio::test]
+async fn browser_entry_url_escapes_awkward_values() {
+    let server = MockServer::start().await;
+    let client = client_for(&server, valid_tokens());
+    let url = client.browser_entry_url("/some path?a=b&c=d").await.unwrap();
+    // It must round-trip exactly, or the redirect after sign-in goes astray.
+    assert_eq!(
+        query_params(&url)
+            .get("state")
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok()),
+        Some(serde_json::json!({ "return_to": "/some path?a=b&c=d" }))
+    );
+}
