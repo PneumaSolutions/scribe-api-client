@@ -141,10 +141,10 @@ impl PyScribeClient {
         format: &str,
     ) -> PyResult<Bound<'py, PyBytes>> {
         let format = parse_format(format)?;
-        let bytes = py
+        let download = py
             .detach(|| runtime().block_on(self.inner.download_output(document_id, format)))
             .map_err(to_py_err)?;
-        Ok(PyBytes::new(py, &bytes))
+        Ok(PyBytes::new(py, &download.data))
     }
 
     fn get_settings(&self, py: Python<'_>, document_id: &str) -> PyResult<PySettings> {

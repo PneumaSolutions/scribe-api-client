@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 base64 = "=0.22.1"
 futures-util = { version = "=0.3.32", default-features = false, features = ["sink"] }
+percent-encoding = "=2.3.2"
 rand = "=0.10.2"
 reqwest = { version = "=0.13.4", default-features = false, features = ["json", "multipart", "form", "native-tls"] }
 serde = { version = "=1.0.228", features = ["derive"] }

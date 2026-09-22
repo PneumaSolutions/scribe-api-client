@@ -60,7 +60,8 @@ async fn list_outputs_parses_in_progress_and_complete_rows() {
                     "stage": "convert",
                     "progress": 0.5,
                     "estimated_time_remaining": 10,
-                    "is_preview": true
+                    "is_preview": true,
+                    "downloadable": false
                 },
                 {
                     "format": "pdf",
@@ -80,6 +81,9 @@ async fn list_outputs_parses_in_progress_and_complete_rows() {
     assert!(!outputs[0].stage.is_complete());
     assert_eq!(outputs[1].format, OutputFormat::Pdf);
     assert!(outputs[1].stage.is_complete());
+    assert!(!outputs[0].downloadable);
+    // A server from before the field existed still offers the download.
+    assert!(outputs[1].downloadable);
 }
 
 #[tokio::test]
@@ -91,11 +95,66 @@ async fn download_output_returns_bytes_when_complete() {
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
-    let bytes = client
+    let download = client
         .download_output("doc-1", OutputFormat::Pdf)
         .await
         .unwrap();
-    assert_eq!(bytes, b"%PDF-1.4 fake".to_vec());
+    assert_eq!(download.data, b"%PDF-1.4 fake".to_vec());
+    assert_eq!(download.file_name, None);
+}
+
+async fn file_name_from_header(header: &str) -> Option<String> {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs/mp3/download"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-disposition", header)
+                .set_body_bytes(b"ID3".to_vec()),
+        )
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    client
+        .download_output("doc-1", OutputFormat::Mp3)
+        .await
+        .unwrap()
+        .file_name
+}
+
+/// The exact header the server sends for the QA report's document.
+#[tokio::test]
+async fn download_output_prefers_the_utf8_file_name() {
+    let name = file_name_from_header(
+        r#"attachment; filename="SensePlayer User Manual (Model - T90ET).mp3"; filename*=UTF-8''SensePlayer%E2%84%A2%20User%20Manual%20%28Model%20-%20T90ET%29.mp3"#,
+    )
+    .await;
+    assert_eq!(
+        name.as_deref(),
+        Some("SensePlayer\u{2122} User Manual (Model - T90ET).mp3")
+    );
+}
+
+/// The server leaves "+" unencoded, so it must not be read as a space.
+#[tokio::test]
+async fn download_output_keeps_a_literal_plus() {
+    let name = file_name_from_header(
+        r#"attachment; filename="C++ Notes.pdf"; filename*=UTF-8''C++%20Notes.pdf"#,
+    )
+    .await;
+    assert_eq!(name.as_deref(), Some("C++ Notes.pdf"));
+}
+
+#[tokio::test]
+async fn download_output_falls_back_to_the_ascii_file_name() {
+    let name = file_name_from_header(r#"attachment; filename="Report.html""#).await;
+    assert_eq!(name.as_deref(), Some("Report.html"));
+}
+
+#[tokio::test]
+async fn download_output_drops_any_folders_in_the_file_name() {
+    let name = file_name_from_header(r#"attachment; filename*=UTF-8''..%2F..%2FReport.pdf"#).await;
+    assert_eq!(name.as_deref(), Some("Report.pdf"));
 }
 
 #[tokio::test]

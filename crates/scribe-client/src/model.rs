@@ -90,6 +90,24 @@ pub struct Output {
     pub progress: f64,
     pub estimated_time_remaining: Option<i64>,
     pub is_preview: bool,
+    /// Whether the server offers this output as a download. The in-app HTML
+    /// preview formats are not. Defaults to true for a server that predates
+    /// the field.
+    #[serde(default = "default_true")]
+    pub downloadable: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// A downloaded output, with the name the server says to save it under.
+#[derive(Debug, Clone)]
+pub struct Download {
+    pub data: Vec<u8>,
+    /// From the response's `Content-Disposition`, or `None` if it had no
+    /// usable file name.
+    pub file_name: Option<String>,
 }
 
 /// Response body of `POST /api/documents`.

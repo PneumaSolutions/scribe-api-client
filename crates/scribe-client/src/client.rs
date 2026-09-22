@@ -11,10 +11,10 @@ use crate::{
     error::ScribeError,
     model::{
         AccountInfo, BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect,
-        DialectsResponse, DocumentList, DocumentListResponse, DocumentSummary, Language,
-        LanguagesResponse,
-        NotificationSettings, OutputFormat, OutputList, OutputListResponse, Settings,
-        SettingsUpdate, TrashedDocument, TrashedDocumentListResponse, Voice, VoicesResponse,
+        DialectsResponse, DocumentList, DocumentListResponse, DocumentSummary, Download, Language,
+        LanguagesResponse, NotificationSettings, OutputFormat, OutputList, OutputListResponse,
+        Settings, SettingsUpdate, TrashedDocument, TrashedDocumentListResponse, Voice,
+        VoicesResponse,
     },
 };
 
@@ -334,7 +334,7 @@ impl ScribeClient {
         &self,
         document_id: &str,
         format: OutputFormat,
-    ) -> Result<Vec<u8>, ScribeError> {
+    ) -> Result<Download, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path(&format!(
             "/api/documents/{document_id}/outputs/{}/download",
@@ -343,7 +343,15 @@ impl ScribeClient {
         let response = self
             .with_auth_retry_raw(|token| self.http.get(url.clone()).bearer_auth(token))
             .await?;
-        Ok(response.bytes().await?.to_vec())
+        let file_name = response
+            .headers()
+            .get(reqwest::header::CONTENT_DISPOSITION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(content_disposition_file_name);
+        Ok(Download {
+            data: response.bytes().await?.to_vec(),
+            file_name,
+        })
     }
 
     /// # Errors
@@ -622,6 +630,39 @@ impl ScribeClient {
 }
 
 /// Small helper trait so response-status handling reads the same way at every call site.
+/// The file name in a `Content-Disposition` header. Prefers the UTF-8
+/// `filename*` (RFC 6266) over the ASCII-only `filename` fallback, and keeps
+/// only the last path component so a name can never point outside the folder
+/// it is saved in.
+fn content_disposition_file_name(header: &str) -> Option<String> {
+    let mut fallback = None;
+    let mut extended = None;
+    for param in header.split(';').map(str::trim) {
+        if let Some(value) = param.strip_prefix("filename*=") {
+            // `charset'language'value`. The server always sends UTF-8, and
+            // its value keeps a literal "+", so this must not be decoded as a
+            // form, which would turn it into a space.
+            let mut parts = value.splitn(3, '\'');
+            if let (Some(charset), Some(_), Some(encoded)) =
+                (parts.next(), parts.next(), parts.next())
+            {
+                if charset.eq_ignore_ascii_case("utf-8") {
+                    extended = percent_encoding::percent_decode_str(encoded)
+                        .decode_utf8()
+                        .ok()
+                        .map(|name| name.into_owned());
+                }
+            }
+        } else if let Some(value) = param.strip_prefix("filename=") {
+            fallback = Some(value.trim_matches('"').to_string());
+        }
+    }
+    extended
+        .or(fallback)
+        .and_then(|name| name.rsplit(['/', '\\']).next().map(str::to_string))
+        .filter(|name| !name.is_empty())
+}
+
 trait ResponseExt {
     async fn error_for_status_or_json_error(self) -> Result<reqwest::Response, ScribeError>;
 }

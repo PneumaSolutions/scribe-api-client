@@ -131,6 +131,7 @@ pub struct Output {
     pub progress: f64,
     pub estimated_time_remaining: Option<i64>,
     pub is_preview: bool,
+    pub downloadable: bool,
 }
 
 impl From<scribe_client_core::Output> for Output {
@@ -141,6 +142,25 @@ impl From<scribe_client_core::Output> for Output {
             progress: o.progress,
             estimated_time_remaining: o.estimated_time_remaining,
             is_preview: o.is_preview,
+            downloadable: o.downloadable,
+        }
+    }
+}
+
+/// The result of `download_output()`.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Download {
+    pub data: Vec<u8>,
+    /// The name the server says to save the file under, or `None` if it gave
+    /// no usable one.
+    pub file_name: Option<String>,
+}
+
+impl From<scribe_client_core::Download> for Download {
+    fn from(d: scribe_client_core::Download) -> Self {
+        Download {
+            data: d.data,
+            file_name: d.file_name,
         }
     }
 }

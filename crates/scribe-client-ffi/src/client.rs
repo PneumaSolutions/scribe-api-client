@@ -6,9 +6,9 @@ use scribe_client_core::{DocumentSource, ScribeClient, SettingsUpdate as CoreSet
 
 use crate::{
     http_client, parse_url, runtime, AccountInfo, BrailleTable, CreatedDocument, Dialect,
-    DocumentList, DocumentSummary, FfiDocumentChannel, Language, NotificationSettings, OutputFormat,
-    OutputList,
-    ScribeError, Settings, SettingsUpdate, TokenSet, TrashedDocument, Voice,
+    DocumentList, DocumentSummary, Download, FfiDocumentChannel, Language, NotificationSettings,
+    OutputFormat, OutputList, ScribeError, Settings, SettingsUpdate, TokenSet, TrashedDocument,
+    Voice,
 };
 
 /// A client for the document-conversion endpoints. Holds a token set and
@@ -154,15 +154,16 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    /// Downloads the raw bytes of a completed output.
+    /// Downloads a completed output and the name to save it under.
     /// Returns `ScribeError::ConversionNotComplete` if still in progress.
     pub fn download_output(
         &self,
         document_id: String,
         format: OutputFormat,
-    ) -> Result<Vec<u8>, ScribeError> {
+    ) -> Result<Download, ScribeError> {
         runtime()
             .block_on(self.inner.download_output(&document_id, format.into()))
+            .map(Into::into)
             .map_err(Into::into)
     }
 
