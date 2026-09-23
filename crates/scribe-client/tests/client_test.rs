@@ -158,6 +158,76 @@ async fn download_output_drops_any_folders_in_the_file_name() {
 }
 
 #[tokio::test]
+async fn download_output_reports_progress_with_a_total() {
+    let server = MockServer::start().await;
+    let body = vec![7u8; 4096];
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs/mp3/download"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(body.clone()))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let mut reports: Vec<(u64, Option<u64>)> = Vec::new();
+    let download = client
+        .download_output_with_progress("doc-1", OutputFormat::Mp3, |downloaded, total| {
+            reports.push((downloaded, total));
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(download.data.len(), body.len());
+    assert_eq!(reports.first(), Some(&(0, Some(4096))));
+    assert_eq!(reports.last(), Some(&(4096, Some(4096))));
+}
+
+/// The real body's length wins over anything else a response claims. The
+/// `x-scribe-content-length` fallback only applies to a chunked response,
+/// which has no Content-Length at all and which wiremock cannot produce.
+#[tokio::test]
+async fn download_output_prefers_the_real_content_length() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs/mp3/download"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("x-scribe-content-length", "9000")
+                .set_body_bytes(vec![1u8; 256]),
+        )
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let mut totals: Vec<Option<u64>> = Vec::new();
+    client
+        .download_output_with_progress("doc-1", OutputFormat::Mp3, |_, total| totals.push(total))
+        .await
+        .unwrap();
+
+    assert!(totals.iter().all(|total| *total == Some(256)),
+            "expected the body's own length, got {totals:?}");
+}
+
+/// Without any size, progress still reports bytes so a caller can show
+/// something moving.
+#[tokio::test]
+async fn download_output_reports_bytes_without_a_total() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs/brf/download"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![3u8; 512]))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let mut last = 0u64;
+    client
+        .download_output_with_progress("doc-1", OutputFormat::Brf, |downloaded, _| {
+            last = downloaded;
+        })
+        .await
+        .unwrap();
+    assert_eq!(last, 512);
+}
+
+#[tokio::test]
 async fn download_output_maps_conversion_not_complete() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))

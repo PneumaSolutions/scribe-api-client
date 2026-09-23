@@ -1,6 +1,10 @@
 //! The document-conversion client.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use scribe_client_core::{DocumentSource, ScribeClient, SettingsUpdate as CoreSettingsUpdate};
 
@@ -17,6 +21,16 @@ use crate::{
 #[derive(uniffi::Object)]
 pub struct FfiScribeClient {
     inner: ScribeClient,
+}
+
+/// How often a download reports its progress at most.
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
+
+/// Told how a download is getting on, from the thread doing the downloading.
+#[uniffi::export(with_foreign)]
+pub trait DownloadProgress: Send + Sync {
+    /// `total` is `None` when the server never said how big the file is.
+    fn on_progress(&self, downloaded: u64, total: Option<u64>);
 }
 
 #[uniffi::export]
@@ -154,16 +168,45 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    /// Downloads a completed output and the name to save it under.
+    /// Downloads a completed output and the name to save it under, reporting
+    /// how much has arrived as it goes.
     /// Returns `ScribeError::ConversionNotComplete` if still in progress.
+    ///
+    /// Reports are throttled: audio of a long document arrives in thousands of
+    /// chunks, and every report crosses into the host language and hops to its
+    /// main thread.
     pub fn download_output(
         &self,
         document_id: String,
         format: OutputFormat,
+        progress: Option<Arc<dyn DownloadProgress>>,
     ) -> Result<Download, ScribeError> {
+        let mut last_report = Instant::now();
+        let mut last_downloaded = 0u64;
         runtime()
-            .block_on(self.inner.download_output(&document_id, format.into()))
-            .map(Into::into)
+            .block_on(self.inner.download_output_with_progress(
+                &document_id,
+                format.into(),
+                |downloaded, total| {
+                    let Some(progress) = progress.as_ref() else { return };
+                    let first_or_last = downloaded == 0 || Some(downloaded) == total;
+                    if first_or_last || last_report.elapsed() >= PROGRESS_INTERVAL {
+                        last_report = Instant::now();
+                        last_downloaded = downloaded;
+                        progress.on_progress(downloaded, total);
+                    }
+                },
+            ))
+            .map(|download| {
+                // The last chunk is easy to miss when the total is unknown.
+                if let Some(progress) = progress.as_ref() {
+                    let downloaded = download.data.len() as u64;
+                    if downloaded != last_downloaded {
+                        progress.on_progress(downloaded, Some(downloaded));
+                    }
+                }
+                download.into()
+            })
             .map_err(Into::into)
     }
 

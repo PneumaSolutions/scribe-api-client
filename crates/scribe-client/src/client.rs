@@ -335,12 +335,35 @@ impl ScribeClient {
         document_id: &str,
         format: OutputFormat,
     ) -> Result<Download, ScribeError> {
+        self.download_output_with_progress(document_id, format, |_, _| {})
+            .await
+    }
+
+    /// As [`download_output`](Self::download_output), reporting bytes received
+    /// as they arrive: `(downloaded, total)`, where `total` is `None` when the
+    /// server doesn't say how big the file is.
+    ///
+    /// Audio of a long document is tens of megabytes, and the whole download
+    /// used to be one silent wait.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`download_output`](Self::download_output).
+    pub async fn download_output_with_progress<F>(
+        &self,
+        document_id: &str,
+        format: OutputFormat,
+        mut on_progress: F,
+    ) -> Result<Download, ScribeError>
+    where
+        F: FnMut(u64, Option<u64>) + Send,
+    {
         let mut url = self.base_url.clone();
         url.set_path(&format!(
             "/api/documents/{document_id}/outputs/{}/download",
             format.as_str()
         ));
-        let response = self
+        let mut response = self
             .with_auth_retry_raw(|token| self.http.get(url.clone()).bearer_auth(token))
             .await?;
         let file_name = response
@@ -348,10 +371,15 @@ impl ScribeClient {
             .get(reqwest::header::CONTENT_DISPOSITION)
             .and_then(|value| value.to_str().ok())
             .and_then(content_disposition_file_name);
-        Ok(Download {
-            data: response.bytes().await?.to_vec(),
-            file_name,
-        })
+        let total = response_total_bytes(&response);
+
+        let mut data: Vec<u8> = Vec::with_capacity(total.unwrap_or(0) as usize);
+        on_progress(0, total);
+        while let Some(chunk) = response.chunk().await? {
+            data.extend_from_slice(&chunk);
+            on_progress(data.len() as u64, total);
+        }
+        Ok(Download { data, file_name })
     }
 
     /// # Errors
@@ -630,6 +658,21 @@ impl ScribeClient {
 }
 
 /// Small helper trait so response-status handling reads the same way at every call site.
+/// How many bytes the body will be, if the server says.
+///
+/// A download streamed from object storage goes out chunked, which has no
+/// `Content-Length`, so the API repeats the size it already knows in a header
+/// of its own. Without either, the caller only learns the total at the end.
+fn response_total_bytes(response: &reqwest::Response) -> Option<u64> {
+    response.content_length().or_else(|| {
+        response
+            .headers()
+            .get("x-scribe-content-length")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.trim().parse().ok())
+    })
+}
+
 /// The file name in a `Content-Disposition` header. Prefers the UTF-8
 /// `filename*` (RFC 6266) over the ASCII-only `filename` fallback, and keeps
 /// only the last path component so a name can never point outside the folder
