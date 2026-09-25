@@ -227,6 +227,52 @@ async fn download_output_reports_bytes_without_a_total() {
     assert_eq!(last, 512);
 }
 
+/// The API redirects to storage by default, so a player can stream from there.
+#[tokio::test]
+async fn download_url_reports_where_the_file_really_lives() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs/mp3/download"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", "https://storage.example/doc-1.mp3?signature=abc"),
+        )
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let url = client.download_url("doc-1", OutputFormat::Mp3).await.unwrap();
+    assert_eq!(url.as_deref(), Some("https://storage.example/doc-1.mp3?signature=abc"));
+}
+
+/// A server that sends the file itself says so by not redirecting, and the
+/// caller downloads it first instead.
+#[tokio::test]
+async fn download_url_is_none_when_the_server_sends_the_file() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs/mp3/download"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ID3".to_vec()))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    assert_eq!(client.download_url("doc-1", OutputFormat::Mp3).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn download_url_maps_conversion_not_complete() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents/doc-1/outputs/mp3/download"))
+        .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
+            "error": {"code": "conversion_not_complete", "message": "This file isn't ready yet."}
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let result = client.download_url("doc-1", OutputFormat::Mp3).await;
+    assert!(matches!(result, Err(ScribeError::ConversionNotComplete { .. })));
+}
+
 #[tokio::test]
 async fn download_output_maps_conversion_not_complete() {
     let server = MockServer::start().await;

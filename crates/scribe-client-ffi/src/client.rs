@@ -168,6 +168,18 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
+    /// Where a player can stream this output from, or `None` when this server
+    /// sends the file itself and it has to be downloaded first.
+    pub fn download_url(
+        &self,
+        document_id: String,
+        format: OutputFormat,
+    ) -> Result<Option<String>, ScribeError> {
+        runtime()
+            .block_on(self.inner.download_url(&document_id, format.into()))
+            .map_err(Into::into)
+    }
+
     /// Downloads a completed output and the name to save it under, reporting
     /// how much has arrived as it goes.
     /// Returns `ScribeError::ConversionNotComplete` if still in progress.

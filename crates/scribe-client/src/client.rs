@@ -339,6 +339,54 @@ impl ScribeClient {
             .await
     }
 
+    /// Where the file can be fetched from directly, when the server answers
+    /// with a redirect rather than the bytes.
+    ///
+    /// The API redirects to storage by default, and that URL carries a real
+    /// `Content-Length` and accepts range requests, which is what a media
+    /// player needs to start before the whole file has arrived and to seek
+    /// afterwards. `None` means this server sends the file itself, so the
+    /// caller has to download it first.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`download_output`](Self::download_output).
+    pub async fn download_url(
+        &self,
+        document_id: &str,
+        format: OutputFormat,
+    ) -> Result<Option<String>, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path(&format!(
+            "/api/documents/{document_id}/outputs/{}/download",
+            format.as_str()
+        ));
+        // Its own client: the shared one follows redirects, which would fetch
+        // the whole file here instead of reporting where it lives.
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
+
+        let token = self.access_token().await?;
+        let mut response = client.get(url.clone()).bearer_auth(&token).send().await?;
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+            let token = self.force_refresh().await?;
+            response = client.get(url.clone()).bearer_auth(&token).send().await?;
+        }
+
+        if response.status().is_redirection() {
+            return Ok(response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string));
+        }
+        // Not a redirect: either this server streams the file itself, or
+        // something is wrong and the body says what.
+        response.error_for_status_or_json_error().await?;
+        Ok(None)
+    }
+
     /// As [`download_output`](Self::download_output), reporting bytes received
     /// as they arrive: `(downloaded, total)`, where `total` is `None` when the
     /// server doesn't say how big the file is.
