@@ -6,9 +6,9 @@ MP3 audio, and Braille.
 
 It covers signing in (OAuth 2.0 with PKCE), uploading documents, converting
 them, following a conversion live over a WebSocket channel, downloading the
-results, and the account and settings around them. The same code is behind the
-Scribe iOS app and the [`scribe-client`](https://pypi.org/project/scribe-client/)
-Python package.
+results, and the account and settings around them. The
+[`scribe-client`](https://pypi.org/project/scribe-client/) Python package is
+built on it.
 
 ## Example
 

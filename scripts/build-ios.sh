@@ -23,8 +23,8 @@ TARGET_DIR="$WORKSPACE_DIR/target"
 OUTPUT_DIR="$WORKSPACE_DIR/output"
 # Where the generated Swift bindings are copied. Set IOS_PROJECT_DIR to
 # override. The fallback handles both checkouts this repo lives in: as a
-# submodule inside scribe-ios, and as a sibling directory next to it. Guessing
-# wrong here is quiet and expensive — the build carries on against whichever
+# submodule inside the iOS app's repository, and as a sibling directory next
+# to it. Guessing wrong here is quiet and expensive — the build carries on against whichever
 # stale bindings are already committed.
 if [ -z "${IOS_PROJECT_DIR:-}" ]; then
     if [ -d "$WORKSPACE_DIR/../ScribeApp" ]; then

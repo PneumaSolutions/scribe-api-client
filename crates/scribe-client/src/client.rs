@@ -49,8 +49,7 @@ struct ApiErrorBody {
 /// Path of the web page where a user requests, or cancels, deletion of their own
 /// account.
 ///
-/// Mounted under `/settings` in the Pneumalith webapp, not at a top-level
-/// `/delete_account`. Reach it through [`ScribeClient::delete_account_url`] so the
+/// It is under `/settings`, not at a top-level `/delete_account`. Reach it through [`ScribeClient::delete_account_url`] so the
 /// browser arrives already signed in. The same page starts a deletion and cancels
 /// a pending one, so one path serves both.
 pub const DELETE_ACCOUNT_PATH: &str = "/settings/delete_account";
@@ -276,7 +275,7 @@ impl ScribeClient {
         let token = self.access_token().await?;
         match self.connect_ws_channel(document_id, &token).await {
             // WebSocket handshake failure likely means the token was rejected
-            // (Phoenix returns 403 when UserSocket.connect/3 returns :error).
+            // (the server answers 403 when it refuses the token).
             // Retry once with a force-refreshed token before giving up.
             Err(ScribeError::WebSocket(_)) => {
                 let token = self.force_refresh().await?;
@@ -512,9 +511,8 @@ impl ScribeClient {
         Ok(url.into())
     }
 
-    /// The account-deletion page, signed in. App Store guideline 5.1.1(v)
-    /// requires an app with account creation to let users start deletion from
-    /// inside the app.
+    /// The account-deletion page, signed in, for an app that lets users
+    /// start deleting their account from inside it.
     ///
     /// # Errors
     ///

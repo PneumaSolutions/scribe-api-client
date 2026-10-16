@@ -20,7 +20,7 @@ default = ["rustls"]
 # PyPI are built with, and the simplest choice for anyone else.
 rustls = ["reqwest/rustls", "tokio-tungstenite/rustls-tls-native-roots"]
 # TLS by the platform's own library (Security.framework on Apple, SChannel on
-# Windows, OpenSSL elsewhere): what the iOS app is built with.
+# Windows, OpenSSL elsewhere).
 native-tls = ["reqwest/native-tls", "tokio-tungstenite/native-tls"]
 
 [dependencies]

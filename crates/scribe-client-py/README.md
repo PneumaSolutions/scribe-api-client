@@ -2,8 +2,8 @@
 
 Python bindings for the Scribe document conversion API. This package is a
 thin, synchronous wrapper (via [PyO3](https://pyo3.rs)) around the Rust
-`scribe-client` crate in this workspace — the same core that backs the
-UniFFI (iOS/Android) bindings, so behavior is consistent across languages.
+[`scribe-client`](https://crates.io/crates/scribe-client) crate, so it
+behaves the same as the Rust client.
 
 - **Synchronous by design.** Every method blocks until the request
   completes; there's no `asyncio` API. Under the hood each call runs on a

@@ -4,9 +4,9 @@
 //! whose name contains "update" as an installer and refuses to run it without
 //! elevation, so `cargo test` failed there with os error 740.
 //!
-//! The server's `document_settings.dialects` and `.voices` columns are strings
-//! holding JSON, but `GET` returns them already decoded. Writing them back as
-//! an object fails the Ecto cast, so these pin the string-on-write shape.
+//! The server takes the `dialects` and `voices` settings as strings holding
+//! JSON, but `GET` returns them already decoded. Writing them back as an
+//! object is rejected, so these pin the string-on-write shape.
 
 use scribe_client_core::SettingsUpdate as CoreSettingsUpdate;
 use scribe_client_ffi::SettingsUpdate;

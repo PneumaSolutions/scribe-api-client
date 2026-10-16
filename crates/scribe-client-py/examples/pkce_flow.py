@@ -10,7 +10,7 @@ server is the point of this script.
 
 Configure via environment variables:
 
-    SCRIBE_BASE_URL       e.g. http://localhost:8083
+    SCRIBE_BASE_URL       e.g. https://scribeit.io
     SCRIBE_CLIENT_ID      OAuth client_id registered on the server
     SCRIBE_REDIRECT_URI   must match one registered for that client_id
     SCRIBE_DOCUMENT_PATH  local file to upload (mutually exclusive with
