@@ -4,9 +4,29 @@ build-backend = "maturin"
 
 [project]
 name = "scribe-client"
-version = "0.1.0"
-description = "Python bindings for the Scribe document conversion API client"
+# From the Cargo workspace, so a release changes one version number.
+dynamic = ["version"]
+description = "Python client for the Scribe for Documents API, which converts documents into accessible formats"
+readme = "README.md"
+license = { text = "MIT OR Apache-2.0" }
+authors = [{ name = "Pneuma Solutions" }]
 requires-python = ">=3.9"
+keywords = ["scribe", "accessibility", "daisy", "braille", "epub"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Operating System :: OS Independent",
+    "Topic :: Text Processing",
+    "Topic :: Adaptive Technologies",
+]
+
+[project.urls]
+Homepage = "https://scribeit.io"
+Repository = "https://github.com/PneumaSolutions/scribe-api-client"
 
 [tool.maturin]
 module-name = "scribe_client"

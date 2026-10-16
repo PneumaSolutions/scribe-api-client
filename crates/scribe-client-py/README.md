@@ -15,8 +15,13 @@ UniFFI (iOS/Android) bindings, so behavior is consistent across languages.
 
 ## Installing
 
-This package isn't published to PyPI yet. Build and install it from
-source with [maturin](https://www.maturin.rs/):
+```bash
+pip install scribe-client
+```
+
+Wheels are built for Linux, macOS and Windows, for Python 3.9 and later.
+
+To build it from source instead, with [maturin](https://www.maturin.rs/):
 
 ```bash
 cd crates/scribe-client-py
