@@ -1,0 +1,122 @@
+# Publishes a release. Push a tag matching the workspace version (v0.1.0 for
+# version 0.1.0) and this publishes the scribe-client crate to crates.io and
+# the Python package, prebuilt wheels and sdist, to PyPI.
+#
+# Both registries are reached by trusted publishing: each one trusts this
+# workflow in this repository, by name, so there are no API tokens to store.
+# The `crates-io` and `pypi` environments are the ones each registry is told
+# to expect.
+#
+# Run by hand (Actions > Release > Run workflow), it builds everything and
+# publishes nothing, which is how to check the wheels before a release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    name: Check the version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tag matches the workspace version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "scribe-client") | .version')"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match the workspace version ${version} (expected v${version})"
+            exit 1
+          fi
+
+  wheels:
+    name: Wheel (${{ matrix.platform }} ${{ matrix.target }})
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: manylinux, os: ubuntu-latest, target: x86_64, manylinux: auto }
+          - { platform: manylinux, os: ubuntu-latest, target: aarch64, manylinux: auto }
+          - { platform: musllinux, os: ubuntu-latest, target: x86_64, manylinux: musllinux_1_2 }
+          - { platform: musllinux, os: ubuntu-latest, target: aarch64, manylinux: musllinux_1_2 }
+          - { platform: macos, os: macos-latest, target: x86_64-apple-darwin }
+          - { platform: macos, os: macos-latest, target: aarch64-apple-darwin }
+          - { platform: windows, os: windows-latest, target: x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # One wheel per platform serves every Python from 3.9 on (abi3).
+      - uses: PyO3/maturin-action@v1
+        with:
+          working-directory: crates/scribe-client-py
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform }}-${{ matrix.target }}
+          path: crates/scribe-client-py/dist
+
+  sdist:
+    name: Source distribution
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: PyO3/maturin-action@v1
+        with:
+          working-directory: crates/scribe-client-py
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: crates/scribe-client-py/dist
+
+  crates-io:
+    name: Publish to crates.io
+    if: startsWith(github.ref, 'refs/tags/')
+    # Only once every wheel has built, so the two registries get the release
+    # together or not at all.
+    needs: [wheels, sdist]
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - run: cargo publish --locked -p scribe-client
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+  pypi:
+    name: Publish to PyPI
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [wheels, sdist]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
