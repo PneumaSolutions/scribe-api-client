@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Rust client for the Scribe document conversion API"
+readme = "README.md"
+homepage = "https://scribeit.io"
+documentation = "https://docs.rs/scribe-client"
+keywords = ["scribe", "accessibility", "daisy", "braille", "epub"]
+categories = ["api-bindings", "accessibility", "web-programming::http-client"]
 
 [lints]
 workspace = true

@@ -1,4 +1,6 @@
-//! Rust client for the Scribe document conversion API.
+// The README is the crate documentation, so its example is compiled as a
+// doctest and cannot drift from the API.
+#![doc = include_str!("../README.md")]
 
 mod auth;
 mod channel;
