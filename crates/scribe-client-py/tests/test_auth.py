@@ -6,9 +6,14 @@ from scribe_client import AuthClient, InvalidGrantError, PkceChallenge, ScribeAp
 def test_authorization_url_includes_pkce_challenge(mock_server):
     client = AuthClient(mock_server.base_url, "test-client-id")
     pkce = PkceChallenge()
+    # By way of the server's logout, to drop any session the browser still
+    # holds, then on to the authorize request itself.
     url = urlparse(client.authorization_url("myapp://callback", pkce))
-    query = parse_qs(url.query)
-    assert url.path == "/oauth/authorize"
+    assert url.path == "/auth/logout"
+    [next_target] = parse_qs(url.query)["next"]
+    authorize = urlparse(next_target)
+    query = parse_qs(authorize.query)
+    assert authorize.path == "/oauth/authorize"
     assert query["code_challenge"] == [pkce.challenge]
     assert query["code_challenge_method"] == ["S256"]
     assert query["redirect_uri"] == ["myapp://callback"]
