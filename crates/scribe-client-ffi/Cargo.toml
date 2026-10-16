@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+# Not on crates.io: built into the apps, and only scribe-client is
+# published to crates.io.
+publish = false
 description = "UniFFI bindings for the Scribe API client (iOS / Android)"
 
 [lib]

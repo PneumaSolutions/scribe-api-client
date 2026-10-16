@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+# Not on crates.io: the Python package goes to PyPI, and only
+# scribe-client is published to crates.io.
+publish = false
 description = "Python bindings (PyO3) for scribe-client"
 
 [lib]
