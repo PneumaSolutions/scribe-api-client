@@ -1,0 +1,72 @@
+# Builds, lints and tests every push and pull request: the Rust crates on
+# Linux, macOS and Windows, and the Python package on the oldest and newest
+# Pythons it supports.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Nightly: rustfmt.toml uses options stable rustfmt ignores.
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # The Python crate is built by maturin, in its own job.
+      - run: cargo clippy --locked --workspace --exclude scribe-client-py --all-targets
+      - run: cargo test --locked --workspace --exclude scribe-client-py
+      # The TLS the iOS bindings use, on its own, as a downstream crate would
+      # ask for it.
+      - run: cargo check --locked -p scribe-client --no-default-features --features native-tls
+
+  python:
+    name: Python ${{ matrix.python }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.9", "3.13"]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: crates/scribe-client-py
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv venv
+      - run: uv pip install maturin pytest
+      - run: uv run --no-project maturin develop --locked
+      - run: uv run --no-project pytest -q
