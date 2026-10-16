@@ -1,14 +1,8 @@
 # scribe-client
 
-A Rust client for the [Scribe for Documents](https://scribeit.io) API by Pneuma
-Solutions, which converts documents into accessible formats: HTML, DAISY, EPUB,
-MP3 audio, and Braille.
+A Rust client for the [Scribe for Documents](https://scribeit.io) API by Pneuma Solutions, which converts documents into accessible formats: HTML, DAISY, EPUB, MP3 audio, and Braille.
 
-It covers signing in (OAuth 2.0 with PKCE), uploading documents, converting
-them, following a conversion live over a WebSocket channel, downloading the
-results, and the account and settings around them. The
-[`scribe-client`](https://pypi.org/project/scribe-client/) Python package is
-built on it.
+It covers signing in (OAuth 2.0 with PKCE), uploading documents, converting them, following a conversion live over a WebSocket channel, downloading the results, and the account and settings around them. The [`scribe-client`](https://pypi.org/project/scribe-client/) Python package is built on it.
 
 ## Example
 
@@ -41,16 +35,11 @@ async fn main() -> Result<(), scribe_client::ScribeError> {
 }
 ```
 
-`ScribeClient` and `AuthClient` take a `reqwest::Client` and a `Url`; use the
-`scribe_client::reqwest` and `scribe_client::Url` re-exports so the versions
-match.
+`ScribeClient` and `AuthClient` take a `reqwest::Client` and a `Url`; use the `scribe_client::reqwest` and `scribe_client::Url` re-exports so the versions match.
 
 ## TLS
 
-By default TLS is done by [rustls](https://crates.io/crates/rustls), with no
-system library to link against. To use the platform's own TLS library instead
-(Security.framework on Apple platforms, SChannel on Windows, OpenSSL
-elsewhere), turn off the default features and turn on `native-tls`:
+By default TLS is done by [rustls](https://crates.io/crates/rustls), with no system library to link against. To use the platform's own TLS library instead (Security.framework on Apple platforms, SChannel on Windows, OpenSSL elsewhere), turn off the default features and turn on `native-tls`:
 
 ```toml
 scribe-client = { version = "0.1", default-features = false, features = ["native-tls"] }
@@ -58,6 +47,4 @@ scribe-client = { version = "0.1", default-features = false, features = ["native
 
 ## License
 
-Licensed under either of the [Apache License, Version 2.0](https://github.com/PneumaSolutions/scribe-api-client/blob/main/LICENSE-APACHE)
-or the [MIT license](https://github.com/PneumaSolutions/scribe-api-client/blob/main/LICENSE-MIT),
-at your option.
+Licensed under either of the [Apache License, Version 2.0](https://github.com/PneumaSolutions/scribe-api-client/blob/main/LICENSE-APACHE) or the [MIT license](https://github.com/PneumaSolutions/scribe-api-client/blob/main/LICENSE-MIT), at your option.
