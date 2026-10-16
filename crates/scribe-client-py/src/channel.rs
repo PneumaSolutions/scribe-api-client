@@ -4,7 +4,11 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 
 use scribe_client_core::DocumentChannel;
 
-use crate::{error::to_py_err, error::ScribeApiError, model::parse_format, runtime};
+use crate::{
+    error::{to_py_err, ScribeApiError},
+    model::parse_format,
+    runtime,
+};
 
 pub(crate) fn channel_closed_err() -> PyErr {
     ScribeApiError::new_err("channel is closed")

@@ -86,10 +86,7 @@ async fn revoke_maps_a_refusal_to_the_api_variant() {
         .await;
     let client = auth_client(&server.uri());
     let result = client.revoke("rt-456").await;
-    assert!(matches!(
-        result,
-        Err(ScribeError::Api { status: 503, .. })
-    ));
+    assert!(matches!(result, Err(ScribeError::Api { status: 503, .. })));
 }
 
 #[tokio::test]

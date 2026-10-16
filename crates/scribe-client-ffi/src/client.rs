@@ -200,7 +200,9 @@ impl FfiScribeClient {
                 &document_id,
                 format.into(),
                 |downloaded, total| {
-                    let Some(progress) = progress.as_ref() else { return };
+                    let Some(progress) = progress.as_ref() else {
+                        return;
+                    };
                     let first_or_last = downloaded == 0 || Some(downloaded) == total;
                     if first_or_last || last_report.elapsed() >= PROGRESS_INTERVAL {
                         last_report = Instant::now();
@@ -268,10 +270,7 @@ impl FfiScribeClient {
             .map_err(Into::into)
     }
 
-    pub fn update_default_settings(
-        &self,
-        update: SettingsUpdate,
-    ) -> Result<Settings, ScribeError> {
+    pub fn update_default_settings(&self, update: SettingsUpdate) -> Result<Settings, ScribeError> {
         let core_update: CoreSettingsUpdate = update.into();
         runtime()
             .block_on(self.inner.update_default_settings(&core_update))

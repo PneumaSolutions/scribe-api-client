@@ -149,7 +149,11 @@ impl AuthClient {
     /// verifier to the host application to keep between the two halves of the
     /// flow, so by this point only the challenge string is left.
     #[must_use]
-    pub fn authorization_url_with_challenge(&self, redirect_uri: &str, pkce_challenge: &str) -> Url {
+    pub fn authorization_url_with_challenge(
+        &self,
+        redirect_uri: &str,
+        pkce_challenge: &str,
+    ) -> Url {
         let mut authorize = self.base_url.clone();
         authorize.set_path("/oauth/authorize");
         authorize
@@ -272,16 +276,16 @@ impl AuthClient {
             let text = response.text().await.unwrap_or_default();
             match serde_json::from_str::<TokenErrorResponse>(&text) {
                 Ok(err) if err.error == "invalid_grant" => Err(ScribeError::InvalidGrant {
-                    message: err
-                        .message
-                        .unwrap_or_else(|| "Your session has expired. Please sign in again.".to_string()),
+                    message: err.message.unwrap_or_else(|| {
+                        "Your session has expired. Please sign in again.".to_string()
+                    }),
                 }),
                 Ok(err) => Err(ScribeError::Api {
                     status: status.as_u16(),
                     code: err.error,
-                    message: err
-                        .message
-                        .unwrap_or_else(|| "We couldn't sign you in. Please try again.".to_string()),
+                    message: err.message.unwrap_or_else(|| {
+                        "We couldn't sign you in. Please try again.".to_string()
+                    }),
                 }),
                 Err(_) => Err(ScribeError::Api {
                     status: status.as_u16(),

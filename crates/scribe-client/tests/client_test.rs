@@ -202,8 +202,10 @@ async fn download_output_prefers_the_real_content_length() {
         .await
         .unwrap();
 
-    assert!(totals.iter().all(|total| *total == Some(256)),
-            "expected the body's own length, got {totals:?}");
+    assert!(
+        totals.iter().all(|total| *total == Some(256)),
+        "expected the body's own length, got {totals:?}"
+    );
 }
 
 /// Without any size, progress still reports bytes so a caller can show
@@ -233,15 +235,21 @@ async fn download_url_reports_where_the_file_really_lives() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/api/documents/doc-1/outputs/mp3/download"))
-        .respond_with(
-            ResponseTemplate::new(302)
-                .insert_header("location", "https://storage.example/doc-1.mp3?signature=abc"),
-        )
+        .respond_with(ResponseTemplate::new(302).insert_header(
+            "location",
+            "https://storage.example/doc-1.mp3?signature=abc",
+        ))
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
-    let url = client.download_url("doc-1", OutputFormat::Mp3).await.unwrap();
-    assert_eq!(url.as_deref(), Some("https://storage.example/doc-1.mp3?signature=abc"));
+    let url = client
+        .download_url("doc-1", OutputFormat::Mp3)
+        .await
+        .unwrap();
+    assert_eq!(
+        url.as_deref(),
+        Some("https://storage.example/doc-1.mp3?signature=abc")
+    );
 }
 
 /// A server that sends the file itself says so by not redirecting, and the
@@ -255,7 +263,13 @@ async fn download_url_is_none_when_the_server_sends_the_file() {
         .mount(&server)
         .await;
     let client = client_for(&server, valid_tokens());
-    assert_eq!(client.download_url("doc-1", OutputFormat::Mp3).await.unwrap(), None);
+    assert_eq!(
+        client
+            .download_url("doc-1", OutputFormat::Mp3)
+            .await
+            .unwrap(),
+        None
+    );
 }
 
 #[tokio::test]
@@ -270,7 +284,10 @@ async fn download_url_maps_conversion_not_complete() {
         .await;
     let client = client_for(&server, valid_tokens());
     let result = client.download_url("doc-1", OutputFormat::Mp3).await;
-    assert!(matches!(result, Err(ScribeError::ConversionNotComplete { .. })));
+    assert!(matches!(
+        result,
+        Err(ScribeError::ConversionNotComplete { .. })
+    ));
 }
 
 #[tokio::test]
@@ -773,7 +790,9 @@ async fn rename_document_patches_the_document_and_returns_it() {
         .and(header("authorization", "Bearer at-valid"))
         // The server reads the title out of a nested "document" object, the
         // same shape its own form posts. A flat {"title": ...} is ignored.
-        .and(body_string_contains(r#""document":{"title":"Quarterly Earnings"}"#))
+        .and(body_string_contains(
+            r#""document":{"title":"Quarterly Earnings"}"#,
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(document_json("Quarterly Earnings")))
         .mount(&server)
         .await;
@@ -805,7 +824,11 @@ async fn rename_document_maps_a_rejected_title_to_an_api_error() {
 }
 
 fn query_params(url: &str) -> std::collections::HashMap<String, String> {
-    Url::parse(url).unwrap().query_pairs().into_owned().collect()
+    Url::parse(url)
+        .unwrap()
+        .query_pairs()
+        .into_owned()
+        .collect()
 }
 
 #[tokio::test]
@@ -825,7 +848,10 @@ async fn delete_account_url_signs_the_browser_in_and_lands_on_the_settings_page(
             .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok()),
         Some(serde_json::json!({ "return_to": scribe_client::DELETE_ACCOUNT_PATH }))
     );
-    assert_eq!(scribe_client::DELETE_ACCOUNT_PATH, "/settings/delete_account");
+    assert_eq!(
+        scribe_client::DELETE_ACCOUNT_PATH,
+        "/settings/delete_account"
+    );
 }
 
 /// The server answers a stale token with a "Failed to log in" page, which is
@@ -850,14 +876,20 @@ async fn delete_account_url_refreshes_a_token_that_is_about_to_expire() {
     };
     let client = client_for(&server, about_to_expire);
     let url = client.delete_account_url().await.unwrap();
-    assert_eq!(query_params(&url).get("token").map(String::as_str), Some("at-fresh"));
+    assert_eq!(
+        query_params(&url).get("token").map(String::as_str),
+        Some("at-fresh")
+    );
 }
 
 #[tokio::test]
 async fn browser_entry_url_escapes_awkward_values() {
     let server = MockServer::start().await;
     let client = client_for(&server, valid_tokens());
-    let url = client.browser_entry_url("/some path?a=b&c=d").await.unwrap();
+    let url = client
+        .browser_entry_url("/some path?a=b&c=d")
+        .await
+        .unwrap();
     // It must round-trip exactly, or the redirect after sign-in goes astray.
     assert_eq!(
         query_params(&url)
