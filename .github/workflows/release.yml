@@ -99,9 +99,23 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+      # A version already there is left alone, not failed on: crates.io only
+      # trusts a workflow for a crate that already exists, so the first
+      # version was published by hand, and a rerun of a release whose PyPI
+      # half failed should not fail here instead.
+      - name: Is this version already on crates.io?
+        id: published
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          status="$(curl -s -o /dev/null -w '%{http_code}' \
+            -A 'scribe-api-client release (github.com/PneumaSolutions/scribe-api-client)' \
+            "https://crates.io/api/v1/crates/scribe-client/${version}")"
+          echo "already=$([ "$status" = 200 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - uses: rust-lang/crates-io-auth-action@v1
+        if: steps.published.outputs.already != 'true'
         id: auth
-      - run: cargo publish --locked -p scribe-client
+      - if: steps.published.outputs.already != 'true'
+        run: cargo publish --locked -p scribe-client
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
