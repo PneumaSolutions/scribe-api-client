@@ -1,6 +1,3 @@
-//! The error type that crosses the FFI boundary, and the mapping from the
-//! core crate's errors onto it.
-
 use url::Url;
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]

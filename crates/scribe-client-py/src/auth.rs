@@ -1,5 +1,3 @@
-//! The OAuth 2.0 Authorization Code + PKCE flow.
-
 use pyo3::prelude::*;
 
 use scribe_client_core::AuthClient;

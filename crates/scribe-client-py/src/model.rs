@@ -1,6 +1,3 @@
-//! The Python classes carrying plain data across the boundary, and the
-//! conversions between them and the core crate's own types.
-
 use std::collections::HashMap;
 
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};

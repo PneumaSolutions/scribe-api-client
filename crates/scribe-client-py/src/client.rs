@@ -1,5 +1,3 @@
-//! The document-conversion client.
-
 use std::collections::HashMap;
 
 use pyo3::{

@@ -1,6 +1,3 @@
-//! The exception types the Python API raises, and the mapping from the core
-//! crate's errors onto them.
-
 use pyo3::{create_exception, exceptions::PyException, prelude::*};
 
 use scribe_client_core::ScribeError;

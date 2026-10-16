@@ -1,5 +1,3 @@
-//! The streaming conversion channel, and the events it delivers.
-
 use std::sync::Mutex;
 
 use scribe_client_core::{ChannelEvent as CoreChannelEvent, DocumentChannel};

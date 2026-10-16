@@ -1,5 +1,3 @@
-//! The streaming conversion channel.
-
 use pyo3::{exceptions::PyValueError, prelude::*};
 
 use scribe_client_core::DocumentChannel;

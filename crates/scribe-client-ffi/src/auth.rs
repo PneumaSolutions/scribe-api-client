@@ -1,5 +1,3 @@
-//! The OAuth 2.0 Authorization Code + PKCE flow.
-
 use std::sync::Arc;
 
 use reqwest::Client;

@@ -1,6 +1,3 @@
-//! The value types that cross the FFI boundary, and their conversions to and
-//! from the core crate's own types.
-//!
 //! These are `uniffi::Record`s and `uniffi::Enum`s: plain data, copied across
 //! the boundary rather than held by handle.
 
