@@ -22,7 +22,9 @@ uniffi-cli = ["uniffi/cli"]
 workspace = true
 
 [dependencies]
-scribe_client_core = { package = "scribe-client", path = "../scribe-client" }
+# The platform's own TLS, as the app has always had, rather than the rustls
+# the crate defaults to.
+scribe_client_core = { package = "scribe-client", path = "../scribe-client", default-features = false, features = ["native-tls"] }
 uniffi = "0.32.0"
 tokio = { version = "1.52.3", features = ["rt-multi-thread"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "multipart", "native-tls"] }
