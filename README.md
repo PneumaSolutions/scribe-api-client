@@ -16,6 +16,16 @@ The client signs in with OAuth 2.0 and PKCE, uploads documents, converts them, f
 
 Each package's README has examples: [Rust](crates/scribe-client/README.md) and [Python](crates/scribe-client-py/README.md). The Rust API reference is on [docs.rs](https://docs.rs/scribe-client).
 
+## Choosing a redirect URI
+
+When you register an app, you give one or more redirect URIs. After the user signs in and approves access, the server sends their browser to one of these, with the authorization code in a `code` query parameter. The server never displays the code itself, so your app has to receive that redirect. The client libraries don't do this for you; they build the authorization URL and exchange the code, and leave the browser and the redirect to your app.
+
+- **Desktop apps, command-line tools and scripts:** use a loopback address with a fixed port, such as `http://127.0.0.1:8765/callback`, and run a small HTTP server on it while the user signs in. The redirect must match a registered URI exactly, port included. The Python example, [`pkce_flow.py`](crates/scribe-client-py/examples/pkce_flow.py), does this.
+- **Mobile apps:** use a custom URL scheme that your app handles, such as `myapp://callback`, through `ASWebAuthenticationSession` on iOS or a Custom Tab on Android.
+- **Web apps:** use an HTTPS URL on your own site.
+
+If nothing receives the redirect, the browser shows an error such as "can't connect to the server at 127.0.0.1" after the user approves access. Sign-in still worked, and the code is in the address bar, so in testing you can copy it from there. It works only once and expires after a few minutes.
+
 ## Development
 
 You need a stable Rust toolchain. Formatting uses nightly rustfmt, because `rustfmt.toml` sets options that are still unstable.

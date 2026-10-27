@@ -46,7 +46,19 @@ client = ScribeClient(base_url, client_id, tokens)
 
 `tokens.access_token`, `tokens.refresh_token`, and `tokens.expires_at` (Unix seconds, or `None`) are readable if you want to persist them between runs — reconstruct a `TokenSet` later with `TokenSet(access_token, refresh_token, expires_at)`.
 
-See `examples/pkce_flow.py` for a runnable end-to-end version of this, including creating a document and converting it.
+`AuthClient` doesn't open a browser or listen for the redirect; getting the `code` back is up to your application. The server never shows the code on a page — it only ever redirects to `redirect_uri` — so something has to be listening there. For a desktop app or script, register a loopback URI with a fixed port, such as `http://127.0.0.1:8765/callback`, and run a small HTTP server on that address while the user signs in. See the [top-level README](../../README.md#choosing-a-redirect-uri) for other kinds of app.
+
+See `examples/pkce_flow.py` for a runnable end-to-end version of this, including creating a document and converting it. Given a loopback `SCRIBE_REDIRECT_URI`, it opens the browser and catches the redirect itself:
+
+```bash
+export SCRIBE_BASE_URL=https://scribeit.io
+export SCRIBE_CLIENT_ID=your-client-id
+export SCRIBE_REDIRECT_URI=http://127.0.0.1:8765/callback  # as registered for your app
+export SCRIBE_DOCUMENT_PATH=report.docx
+uv run --project crates/scribe-client-py crates/scribe-client-py/examples/pkce_flow.py
+```
+
+With any other redirect URI, the browser ends up on a page that fails to load after you approve access. That's expected: copy the `code` parameter from the address bar and paste it into the script. A code works only once and expires after a few minutes.
 
 ## Documents
 
