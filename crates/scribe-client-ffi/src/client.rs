@@ -7,10 +7,10 @@ use std::{
 use scribe_client_core::{DocumentSource, ScribeClient, SettingsUpdate as CoreSettingsUpdate};
 
 use crate::{
-    http_client, parse_url, runtime, AccountInfo, BrailleTable, CreatedDocument, Dialect,
-    DocumentList, DocumentSummary, Download, FfiDocumentChannel, Language, NotificationSettings,
-    OutputFormat, OutputList, ScribeError, Settings, SettingsUpdate, TokenSet, TrashedDocument,
-    Voice,
+    http_client, parse_url, runtime, AccountInfo, BillingStatus, BrailleTable, CreatedDocument,
+    Dialect, DocumentList, DocumentSummary, Download, FfiDocumentChannel, Language,
+    NotificationSettings, OutputFormat, OutputList, ScribeError, Settings, SettingsUpdate,
+    TokenSet, TrashedDocument, Voice,
 };
 
 /// A client for the document-conversion endpoints. Holds a token set and
@@ -311,6 +311,25 @@ impl FfiScribeClient {
     pub fn get_account_info(&self) -> Result<AccountInfo, ScribeError> {
         runtime()
             .block_on(self.inner.get_account_info())
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn billing(&self) -> Result<BillingStatus, ScribeError> {
+        runtime()
+            .block_on(self.inner.billing())
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    /// Credits a completed App Store purchase to the account; see
+    /// `ScribeClient::submit_app_store_transaction`.
+    pub fn submit_app_store_transaction(
+        &self,
+        signed_transaction: String,
+    ) -> Result<BillingStatus, ScribeError> {
+        runtime()
+            .block_on(self.inner.submit_app_store_transaction(&signed_transaction))
             .map(Into::into)
             .map_err(Into::into)
     }

@@ -369,6 +369,40 @@ impl From<scribe_client_core::AccountInfo> for AccountInfo {
     }
 }
 
+/// What the account can spend and what it pays for.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct BillingStatus {
+    pub pages_remaining: i64,
+    /// The active subscription, or `None` if the account has none.
+    pub subscription: Option<BillingSubscription>,
+    /// The UUID to set as the `appAccountToken` of every App Store purchase,
+    /// so the server credits it to this account and no other.
+    pub app_account_token: String,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct BillingSubscription {
+    /// `"app_store"` for a subscription bought in the App Store, `"web"` for
+    /// one bought any other way, which the App Store must not be offered to
+    /// replace.
+    pub store: String,
+    /// ISO 8601 UTC timestamp of the next renewal, if the server knows it.
+    pub renews_at: Option<String>,
+}
+
+impl From<scribe_client_core::BillingStatus> for BillingStatus {
+    fn from(b: scribe_client_core::BillingStatus) -> Self {
+        BillingStatus {
+            pages_remaining: b.pages_remaining,
+            subscription: b.subscription.map(|s| BillingSubscription {
+                store: s.store,
+                renews_at: s.renews_at,
+            }),
+            app_account_token: b.app_account_token,
+        }
+    }
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Language {
     pub display_name: String,
