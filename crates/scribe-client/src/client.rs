@@ -10,7 +10,7 @@ use crate::{
     channel::DocumentChannel,
     error::ScribeError,
     model::{
-        AccountInfo, BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect,
+        AccountInfo, BillingStatus, BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect,
         DialectsResponse, DocumentList, DocumentListResponse, DocumentSummary, Download, Language,
         LanguagesResponse, NotificationSettings, OutputFormat, OutputList, OutputListResponse,
         Settings, SettingsUpdate, TrashedDocument, TrashedDocumentListResponse, Voice,
@@ -620,6 +620,39 @@ impl ScribeClient {
         let mut url = self.base_url.clone();
         url.set_path("/api/account_info");
         self.with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await
+    }
+
+    /// The pages the account has left and its active subscription, if any.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn billing(&self) -> Result<BillingStatus, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/billing");
+        self.with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await
+    }
+
+    /// Credits a completed App Store purchase to the account. `signed_transaction`
+    /// is `Transaction.jwsRepresentation` from `StoreKit` 2. Reporting the same
+    /// transaction again is harmless, so finish the transaction in `StoreKit`
+    /// only once this succeeds. Returns the billing status afterwards.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Api`] with code `other_account` if the purchase
+    /// was made while signed in to a different Scribe account, or
+    /// `invalid_transaction` if the server couldn't verify it.
+    pub async fn submit_app_store_transaction(
+        &self,
+        signed_transaction: &str,
+    ) -> Result<BillingStatus, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/app_store/transactions");
+        let body = serde_json::json!({ "signed_transaction": signed_transaction });
+        self.with_auth_retry(|token| self.http.post(url.clone()).bearer_auth(token).json(&body))
             .await
     }
 

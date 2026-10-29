@@ -823,6 +823,98 @@ async fn rename_document_maps_a_rejected_title_to_an_api_error() {
     );
 }
 
+#[tokio::test]
+async fn billing_reads_pages_subscription_and_account_token() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/billing"))
+        .and(header("authorization", "Bearer at-valid"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pages_remaining": 9800,
+            "subscription": {"store": "app_store", "renews_at": "2027-10-29T12:00:00.000000Z"},
+            "app_account_token": "6f1c9a52-3e1b-4a8e-9f5d-2b7c8e4d1a00"
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let billing = client.billing().await.unwrap();
+    assert_eq!(billing.pages_remaining, 9800);
+    let subscription = billing.subscription.unwrap();
+    assert_eq!(subscription.store, "app_store");
+    assert_eq!(
+        subscription.renews_at.as_deref(),
+        Some("2027-10-29T12:00:00.000000Z")
+    );
+    assert_eq!(
+        billing.app_account_token,
+        "6f1c9a52-3e1b-4a8e-9f5d-2b7c8e4d1a00"
+    );
+}
+
+#[tokio::test]
+async fn billing_reads_an_account_without_a_subscription() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/billing"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pages_remaining": 0,
+            "subscription": null,
+            "app_account_token": "6f1c9a52-3e1b-4a8e-9f5d-2b7c8e4d1a00"
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    assert!(client.billing().await.unwrap().subscription.is_none());
+}
+
+#[tokio::test]
+async fn submit_app_store_transaction_posts_the_jws_and_returns_the_new_balance() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/app_store/transactions"))
+        .and(header("authorization", "Bearer at-valid"))
+        .and(body_string_contains(
+            r#""signed_transaction":"header.payload.signature""#,
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pages_remaining": 200,
+            "subscription": null,
+            "app_account_token": "6f1c9a52-3e1b-4a8e-9f5d-2b7c8e4d1a00"
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let billing = client
+        .submit_app_store_transaction("header.payload.signature")
+        .await
+        .unwrap();
+    assert_eq!(billing.pages_remaining, 200);
+}
+
+#[tokio::test]
+async fn submit_app_store_transaction_reports_a_purchase_made_by_another_account() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/app_store/transactions"))
+        .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
+            "error": {
+                "code": "other_account",
+                "message": "This purchase belongs to a different Scribe account."
+            }
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let error = client
+        .submit_app_store_transaction("header.payload.signature")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, ScribeError::Api { status: 409, ref code, .. } if code == "other_account"),
+        "got {error:?}"
+    );
+}
+
 fn query_params(url: &str) -> std::collections::HashMap<String, String> {
     Url::parse(url)
         .unwrap()

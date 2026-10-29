@@ -253,6 +253,27 @@ pub struct AccountInfo {
     pub organization_name: Option<String>,
 }
 
+/// What the account can spend and what it pays for, from `GET /api/billing`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillingStatus {
+    pub pages_remaining: i64,
+    /// The active subscription, or `None` if the account has none.
+    pub subscription: Option<BillingSubscription>,
+    /// The UUID to set as the `appAccountToken` of every App Store purchase,
+    /// so the server credits it to this account and no other.
+    pub app_account_token: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillingSubscription {
+    /// `"app_store"` for a subscription bought in the App Store, `"web"` for
+    /// one bought any other way, which the App Store must not be offered to
+    /// replace.
+    pub store: String,
+    /// ISO 8601 UTC timestamp of the next renewal, if the server knows it.
+    pub renews_at: Option<String>,
+}
+
 /// A `(display_name, language_code)` pair from `GET /api/settings/languages`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Language(pub String, pub String);
