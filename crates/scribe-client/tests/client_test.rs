@@ -868,6 +868,36 @@ async fn billing_reads_an_account_without_a_subscription() {
 }
 
 #[tokio::test]
+async fn app_store_products_lists_what_is_on_sale_in_the_servers_order() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/app_store/products"))
+        .and(header("authorization", "Bearer at-valid"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "products": [
+                {"id": "com.example.pages.500", "kind": "page_pack", "pages": 500},
+                {"id": "com.example.pages.200", "kind": "page_pack", "pages": 200},
+                {"id": "com.example.yearly", "kind": "subscription", "pages": 10000}
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let products = client.app_store_products().await.unwrap();
+    let ids: Vec<&str> = products.iter().map(|p| p.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        [
+            "com.example.pages.500",
+            "com.example.pages.200",
+            "com.example.yearly"
+        ]
+    );
+    assert_eq!(products[2].kind, "subscription");
+    assert_eq!(products[2].pages, 10_000);
+}
+
+#[tokio::test]
 async fn submit_app_store_transaction_posts_the_jws_and_returns_the_new_balance() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

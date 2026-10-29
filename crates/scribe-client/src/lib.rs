@@ -18,7 +18,8 @@ pub use channel::{ChannelEvent, DocumentChannel};
 pub use client::{DocumentSource, ScribeClient, DELETE_ACCOUNT_PATH};
 pub use error::ScribeError;
 pub use model::{
-    AccountInfo, BillingStatus, BillingSubscription, BrailleTable, CreatedDocument, Dialect,
-    DocumentList, DocumentSummary, Download, Language, NotificationSettings, Output, OutputFormat,
-    OutputList, Settings, SettingsUpdate, Stage, TrashedDocument, Voice,
+    AccountInfo, AppStoreProduct, BillingStatus, BillingSubscription, BrailleTable,
+    CreatedDocument, Dialect, DocumentList, DocumentSummary, Download, Language,
+    NotificationSettings, Output, OutputFormat, OutputList, Settings, SettingsUpdate, Stage,
+    TrashedDocument, Voice,
 };

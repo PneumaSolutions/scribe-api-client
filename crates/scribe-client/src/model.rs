@@ -274,6 +274,24 @@ pub struct BillingSubscription {
     pub renews_at: Option<String>,
 }
 
+/// A product on sale in the App Store, from `GET /api/app_store/products`.
+/// The server decides what is on sale, so a special can be offered without a
+/// new app; `StoreKit` supplies the name and price.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppStoreProduct {
+    /// The App Store product ID to ask `StoreKit` for.
+    pub id: String,
+    /// `"page_pack"` or `"subscription"`. Skip any other kind.
+    pub kind: String,
+    /// The pages a page pack adds, or a subscription adds each year.
+    pub pages: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct AppStoreProductsResponse {
+    pub products: Vec<AppStoreProduct>,
+}
+
 /// A `(display_name, language_code)` pair from `GET /api/settings/languages`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Language(pub String, pub String);

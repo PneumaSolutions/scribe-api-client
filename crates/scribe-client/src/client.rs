@@ -10,11 +10,11 @@ use crate::{
     channel::DocumentChannel,
     error::ScribeError,
     model::{
-        AccountInfo, BillingStatus, BrailleTable, BrailleTablesResponse, CreatedDocument, Dialect,
-        DialectsResponse, DocumentList, DocumentListResponse, DocumentSummary, Download, Language,
-        LanguagesResponse, NotificationSettings, OutputFormat, OutputList, OutputListResponse,
-        Settings, SettingsUpdate, TrashedDocument, TrashedDocumentListResponse, Voice,
-        VoicesResponse,
+        AccountInfo, AppStoreProduct, AppStoreProductsResponse, BillingStatus, BrailleTable,
+        BrailleTablesResponse, CreatedDocument, Dialect, DialectsResponse, DocumentList,
+        DocumentListResponse, DocumentSummary, Download, Language, LanguagesResponse,
+        NotificationSettings, OutputFormat, OutputList, OutputListResponse, Settings,
+        SettingsUpdate, TrashedDocument, TrashedDocumentListResponse, Voice, VoicesResponse,
     },
 };
 
@@ -633,6 +633,20 @@ impl ScribeClient {
         url.set_path("/api/billing");
         self.with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
             .await
+    }
+
+    /// Lists the App Store products on sale, in the order to show them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::Http`]/[`ScribeError::Api`] on request failure.
+    pub async fn app_store_products(&self) -> Result<Vec<AppStoreProduct>, ScribeError> {
+        let mut url = self.base_url.clone();
+        url.set_path("/api/app_store/products");
+        let response: AppStoreProductsResponse = self
+            .with_auth_retry(|token| self.http.get(url.clone()).bearer_auth(token))
+            .await?;
+        Ok(response.products)
     }
 
     /// Credits a completed App Store purchase to the account. `signed_transaction`

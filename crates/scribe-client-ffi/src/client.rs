@@ -7,10 +7,10 @@ use std::{
 use scribe_client_core::{DocumentSource, ScribeClient, SettingsUpdate as CoreSettingsUpdate};
 
 use crate::{
-    http_client, parse_url, runtime, AccountInfo, BillingStatus, BrailleTable, CreatedDocument,
-    Dialect, DocumentList, DocumentSummary, Download, FfiDocumentChannel, Language,
-    NotificationSettings, OutputFormat, OutputList, ScribeError, Settings, SettingsUpdate,
-    TokenSet, TrashedDocument, Voice,
+    http_client, parse_url, runtime, AccountInfo, AppStoreProduct, BillingStatus, BrailleTable,
+    CreatedDocument, Dialect, DocumentList, DocumentSummary, Download, FfiDocumentChannel,
+    Language, NotificationSettings, OutputFormat, OutputList, ScribeError, Settings,
+    SettingsUpdate, TokenSet, TrashedDocument, Voice,
 };
 
 /// A client for the document-conversion endpoints. Holds a token set and
@@ -319,6 +319,14 @@ impl FfiScribeClient {
         runtime()
             .block_on(self.inner.billing())
             .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    /// Lists the App Store products on sale, in the order to show them.
+    pub fn app_store_products(&self) -> Result<Vec<AppStoreProduct>, ScribeError> {
+        runtime()
+            .block_on(self.inner.app_store_products())
+            .map(|products| products.into_iter().map(Into::into).collect())
             .map_err(Into::into)
     }
 
