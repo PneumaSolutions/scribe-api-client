@@ -400,7 +400,7 @@ pub struct AppStoreProduct {
     pub id: String,
     /// `"page_pack"` or `"subscription"`. Skip any other kind.
     pub kind: String,
-    /// The pages a page pack adds, or a subscription adds each year.
+    /// The pages a page pack adds, or a subscription adds each billing period.
     pub pages: i64,
 }
 
