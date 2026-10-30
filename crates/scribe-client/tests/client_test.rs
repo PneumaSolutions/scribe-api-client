@@ -721,6 +721,37 @@ async fn list_outputs_reports_a_locked_document() {
 }
 
 #[tokio::test]
+async fn list_documents_reads_whether_to_suggest_buying_pages() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "documents": [],
+            "pages_remaining": 12,
+            "suggest_buying_pages": true
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    assert!(client.list_documents().await.unwrap().suggest_buying_pages);
+}
+
+#[tokio::test]
+async fn list_documents_does_not_suggest_buying_when_the_server_does_not_say() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/documents"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "documents": [],
+            "pages_remaining": 12
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    assert!(!client.list_documents().await.unwrap().suggest_buying_pages);
+}
+
+#[tokio::test]
 async fn list_documents_reports_a_locked_document() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))

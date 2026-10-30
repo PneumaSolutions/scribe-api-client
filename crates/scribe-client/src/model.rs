@@ -156,12 +156,19 @@ pub struct DocumentSummary {
 pub struct DocumentList {
     pub documents: Vec<DocumentSummary>,
     pub pages_remaining: Option<i64>,
+    /// Whether to put buying pages in front of the user, such as on the home
+    /// screen. The server decides: it is true for an individual account with
+    /// only trial pages or few pages left. False from a server that predates
+    /// it.
+    pub suggest_buying_pages: bool,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct DocumentListResponse {
     pub documents: Vec<DocumentSummary>,
     pub pages_remaining: Option<i64>,
+    #[serde(default)]
+    pub suggest_buying_pages: bool,
 }
 
 /// One row from `GET /api/documents/trash`.

@@ -169,6 +169,7 @@ impl ScribeClient {
         Ok(DocumentList {
             documents: response.documents,
             pages_remaining: response.pages_remaining,
+            suggest_buying_pages: response.suggest_buying_pages,
         })
     }
 

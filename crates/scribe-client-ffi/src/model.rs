@@ -186,6 +186,9 @@ impl From<scribe_client_core::OutputList> for OutputList {
 pub struct DocumentList {
     pub documents: Vec<DocumentSummary>,
     pub pages_remaining: Option<i64>,
+    /// Whether to put buying pages in front of the user, such as on the home
+    /// screen. The server decides; false from a server that predates it.
+    pub suggest_buying_pages: bool,
 }
 
 /// One row from `list_documents()`.

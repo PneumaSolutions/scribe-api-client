@@ -94,6 +94,7 @@ impl FfiScribeClient {
             .map(|dl| DocumentList {
                 documents: dl.documents.into_iter().map(Into::into).collect(),
                 pages_remaining: dl.pages_remaining,
+                suggest_buying_pages: dl.suggest_buying_pages,
             })
             .map_err(Into::into)
     }
