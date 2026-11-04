@@ -34,9 +34,14 @@ impl PyDocumentChannel {
 #[pymethods]
 impl PyDocumentChannel {
     /// Starts converting the joined document to `format`, using its
-    /// current settings. Idempotent: if that format is already converting
-    /// or complete, returns its existing output id. Returns immediately;
-    /// progress arrives via subsequent `next_event()` calls.
+    /// current settings. If that format is already complete, returns its
+    /// existing output id. Returns immediately; progress arrives via
+    /// subsequent `next_event()` calls.
+    ///
+    /// Raises `ConversionInProgressError` while any non-preview conversion of
+    /// the document is running, including that format and the `html_stream`
+    /// that creating the document started. Wait for its `conversion_complete`
+    /// event, then call this again.
     ///
     /// `password` unlocks a password-protected document; it's stored against
     /// the document, so later conversions don't need it again. A wrong

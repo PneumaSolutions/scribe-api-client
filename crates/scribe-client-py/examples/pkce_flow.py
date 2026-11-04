@@ -42,7 +42,12 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from scribe_client import AuthClient, PkceChallenge, ScribeClient
+from scribe_client import (
+    AuthClient,
+    ConversionInProgressError,
+    PkceChallenge,
+    ScribeClient,
+)
 
 
 def env_or_exit(name: str) -> str:
@@ -166,13 +171,34 @@ def create_document(client: ScribeClient) -> str:
     sys.exit(1)
 
 
+def start_when_free(channel, output_format: str) -> None:
+    """Starts converting to `output_format`, first waiting out anything already
+    converting. A new document always is: creating it starts `html_stream`, and
+    the server runs one conversion of a document at a time."""
+    while True:
+        try:
+            channel.start_conversion(output_format)
+            return
+        except ConversionInProgressError:
+            print("  waiting for the conversion already running to finish...")
+
+        while True:
+            event = channel.next_event()
+
+            if event["type"] == "conversion_complete":
+                break
+            if event["type"] == "error":
+                print(f"conversion error: {event['reason']}", file=sys.stderr)
+                sys.exit(1)
+
+
 def convert_and_wait(client: ScribeClient, document_id: str, output_format: str) -> bytes:
     """Starts converting to `output_format` over the document channel and
     watches for it to finish, printing progress along the way."""
     channel = client.open_document_channel(document_id)
 
     try:
-        channel.start_conversion(output_format)
+        start_when_free(channel, output_format)
 
         while True:
             event = channel.next_event()

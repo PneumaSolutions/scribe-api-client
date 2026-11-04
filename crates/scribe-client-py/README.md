@@ -97,12 +97,24 @@ client.update_settings(document_id, {"large_print": True})
 
 ## Converting to another format
 
-Creating a document only starts the `html_stream` preview. Converting to any other format — `pdf`, `epub`, `daisy`, `docx`, `brf`, `mp3`, `offline_html`, `mobi` — happens over a **real-time channel**, not a REST call, so the server can guarantee it's subscribed to progress on whatever it just started converting.
+Creating a document starts only the `html_stream` conversion. Converting to any other format — `pdf`, `epub`, `daisy`, `docx`, `brf`, `mp3`, `offline_html`, `mobi` — happens over a **real-time channel**, not a REST call, so the server can guarantee it's subscribed to progress on whatever it just started converting.
+
+The server runs one conversion of a document at a time, and `start_conversion` raises `ConversionInProgressError` while another is running. That includes the `html_stream` conversion that creating the document started, unless it turned out to be a preview, so a call straight after creating a document will normally raise it. Wait for that conversion's `"conversion_complete"` event, then call `start_conversion` again:
 
 ```python
 channel = client.open_document_channel(document_id)
 try:
-    output_id = channel.start_conversion("pdf")
+    while True:
+        try:
+            output_id = channel.start_conversion("pdf")
+            break
+        except ConversionInProgressError:
+            while True:
+                event = channel.next_event()
+                if event["type"] == "conversion_complete":
+                    break
+                if event["type"] == "error":
+                    raise RuntimeError(event["reason"])
 
     while True:
         event = channel.next_event()
@@ -118,7 +130,7 @@ finally:
     channel.close()
 ```
 
-`start_conversion` is idempotent — calling it again for a format that's already converting or complete just returns that output's existing id without starting a duplicate conversion.
+Calling `start_conversion` for a format that's already complete just returns that output's existing id without converting it again. Calling it for a format that's still converting raises `ConversionInProgressError`, like any other running conversion.
 
 `next_event()` blocks until the next event arrives and returns it as a dict tagged by `event["type"]`:
 
@@ -160,7 +172,7 @@ All exceptions are subclasses of `ScribeApiError`:
 | `NotFoundError`                 | the document (or channel) doesn't exist                                    |
 | `ForbiddenError`                | the document exists but isn't owned by the current user                   |
 | `ConversionNotCompleteError`    | `download_output` was called before that format finished converting       |
-| `ConversionInProgressError`     | `start_conversion` was called while a different conversion is already running |
+| `ConversionInProgressError`     | `start_conversion` was called while a conversion of the document is running |
 | `RateLimitedError`              | `start_conversion` was called too many times too quickly                   |
 | `PasswordRequiredError`         | the document is a protected file and no password has been supplied         |
 | `NeedsPurchaseError`            | the account doesn't have enough page credits for the requested conversion   |

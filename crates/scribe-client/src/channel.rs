@@ -100,18 +100,21 @@ impl DocumentChannel {
     }
 
     /// Starts converting the joined document to `format`, using its current
-    /// settings. Idempotent: if that format is already converting or
-    /// complete, the server returns its existing output id instead of
-    /// starting a new conversion. Returns immediately with the output id;
-    /// progress arrives via subsequent [`Self::next_event`] calls.
+    /// settings. If that format is already complete, the server returns its
+    /// existing output id instead of starting a new conversion. Returns
+    /// immediately with the output id; progress arrives via subsequent
+    /// [`Self::next_event`] calls.
     ///
     /// # Errors
     ///
     /// Returns [`ScribeError::NotFound`]/[`ScribeError::Forbidden`] if the
     /// document doesn't exist or isn't owned by the caller,
-    /// [`ScribeError::ConversionInProgress`] if a different non-preview
-    /// conversion is already running, [`ScribeError::RateLimited`] if too
-    /// many conversions were started too quickly,
+    /// [`ScribeError::ConversionInProgress`] if any non-preview conversion
+    /// of the document is running, including that format and the
+    /// `html_stream` that creating the document started (wait for its
+    /// [`ChannelEvent::ConversionComplete`], then call this again),
+    /// [`ScribeError::RateLimited`] if too many conversions were started too
+    /// quickly,
     /// [`ScribeError::NeedsPurchase`] if the account is out of page
     /// credits, or [`ScribeError::PasswordRequired`] if the document is a
     /// protected file and `password` was `None` or wrong.

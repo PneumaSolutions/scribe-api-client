@@ -1,8 +1,61 @@
+import importlib.util
+from pathlib import Path
+
 from scribe_client import NotFoundError, PasswordRequiredError, ScribeClient, TokenSet
 
 
 def valid_tokens():
     return TokenSet("at-valid")
+
+
+def load_pkce_flow_example():
+    path = Path(__file__).parent.parent / "examples" / "pkce_flow.py"
+    spec = importlib.util.spec_from_file_location("pkce_flow", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_example_waits_out_the_html_stream_a_new_document_starts(fake_channel_server):
+    starts = []
+
+    def script(conn):
+        join_ref, ref, topic, _event, _payload = conn.recv_json()
+        conn.send_json([join_ref, ref, topic, "phx_reply", {"status": "ok", "response": {}}])
+
+        _join_ref, ref, topic, _event, payload = conn.recv_json()
+        starts.append(payload["format"])
+        conn.send_json(
+            [
+                join_ref,
+                ref,
+                topic,
+                "phx_reply",
+                {"status": "error", "response": {"reason": "conversion_in_progress"}},
+            ]
+        )
+        conn.send_json(
+            [join_ref, None, topic, "status", {"format": "html_stream", "stage": "convert", "progress": 0.5}]
+        )
+        conn.send_json(
+            [join_ref, None, topic, "conversion_complete", {"format": "html_stream", "output_id": "out-0"}]
+        )
+
+        _join_ref, ref, topic, _event, payload = conn.recv_json()
+        starts.append(payload["format"])
+        conn.send_json(
+            [join_ref, ref, topic, "phx_reply", {"status": "ok", "response": {"output_id": "out-1"}}]
+        )
+
+    server = fake_channel_server(script)
+    client = ScribeClient(server.base_url, "test-client-id", valid_tokens())
+    channel = client.open_document_channel("doc-1")
+    try:
+        load_pkce_flow_example().start_when_free(channel, "brf")
+    finally:
+        channel.close()
+    server.join()
+    assert starts == ["brf", "brf"]
 
 
 def test_open_document_channel_start_conversion_and_events(fake_channel_server):

@@ -89,14 +89,16 @@ impl FfiDocumentChannel {
 #[uniffi::export]
 impl FfiDocumentChannel {
     /// Starts converting the joined document to `format`, using its
-    /// current settings. Idempotent: if that format is already converting
-    /// or complete, returns its existing output id. Returns immediately;
-    /// progress arrives via subsequent [`Self::next_event`] calls.
+    /// current settings. If that format is already complete, returns its
+    /// existing output id. Returns immediately; progress arrives via
+    /// subsequent [`Self::next_event`] calls.
     ///
     /// # Errors
     ///
-    /// Returns [`ScribeError::ConversionInProgress`] if a different
-    /// non-preview conversion is already running,
+    /// Returns [`ScribeError::ConversionInProgress`] if any non-preview
+    /// conversion of the document is running, including that format and the
+    /// `html_stream` that creating the document started (wait for its
+    /// `ConversionComplete` event, then call this again),
     /// [`ScribeError::RateLimited`] if too many conversions were started
     /// too quickly, [`ScribeError::NeedsPurchase`] if the account is out
     /// of page credits, [`ScribeError::PasswordRequired`] if the document
