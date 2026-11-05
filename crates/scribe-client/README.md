@@ -42,7 +42,7 @@ async fn main() -> Result<(), scribe_client::ScribeError> {
 By default TLS is done by [rustls](https://crates.io/crates/rustls), with no system library to link against. To use the platform's own TLS library instead (Security.framework on Apple platforms, SChannel on Windows, OpenSSL elsewhere), turn off the default features and turn on `native-tls`:
 
 ```toml
-scribe-client = { version = "0.1", default-features = false, features = ["native-tls"] }
+scribe-client = { version = "0.2", default-features = false, features = ["native-tls"] }
 ```
 
 ## License
