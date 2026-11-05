@@ -3,7 +3,7 @@
 use futures_util::{SinkExt, StreamExt};
 use scribe_client::{ChannelEvent, OutputFormat, ScribeClient, ScribeError, Stage, TokenSet};
 use serde_json::Value;
-use std::{future::Future, pin::Pin};
+use std::{future::Future, pin::Pin, time::Duration};
 use time::OffsetDateTime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
@@ -375,4 +375,122 @@ async fn a_password_required_push_surfaces_as_an_event() {
         channel.next_event().await.unwrap(),
         ChannelEvent::PasswordRequired
     );
+}
+
+/// Replies to the `phx_join` that opening a channel sends.
+async fn accept_join(ws: &mut WebSocketStream<TcpStream>) -> (String, String) {
+    let (join_ref, ref_, topic, event, _payload) = recv(ws).await;
+    assert_eq!(event, "phx_join");
+    let join_ref = join_ref.unwrap();
+    send(
+        ws,
+        &join_ref,
+        ref_.as_deref(),
+        &topic,
+        "phx_reply",
+        serde_json::json!({"status": "ok", "response": {}}),
+    )
+    .await;
+    (join_ref, topic)
+}
+
+/// Phoenix closes a socket it has heard nothing from for about 66 seconds,
+/// however much it's sending, so waiting on a long conversion needs these.
+#[tokio::test(start_paused = true)]
+async fn waiting_for_an_event_sends_heartbeats_until_one_arrives() {
+    let base_url = start_fake_server(|mut ws| {
+        Box::pin(async move {
+            let (join_ref, topic) = accept_join(&mut ws).await;
+            for _ in 0..3 {
+                let (heartbeat_join_ref, ref_, heartbeat_topic, event, _) = recv(&mut ws).await;
+                assert_eq!(heartbeat_join_ref, None);
+                assert_eq!(heartbeat_topic, "phoenix");
+                assert_eq!(event, "heartbeat");
+                let reply: RawFrame = (
+                    None,
+                    ref_,
+                    "phoenix".to_string(),
+                    "phx_reply".to_string(),
+                    serde_json::json!({"status": "ok", "response": {}}),
+                );
+                ws.send(Message::text(serde_json::to_string(&reply).unwrap()))
+                    .await
+                    .unwrap();
+            }
+            send(
+                &mut ws,
+                &join_ref,
+                None,
+                &topic,
+                "conversion_complete",
+                serde_json::json!({"format": "pdf", "output_id": "out-1"}),
+            )
+            .await;
+            // Hold the connection open until the client has read the event.
+            let _ = ws.next().await;
+        })
+    })
+    .await;
+
+    let client = client_for(base_url);
+    let mut channel = client.open_document_channel("doc-1").await.unwrap();
+    let started = tokio::time::Instant::now();
+
+    let event = tokio::time::timeout(Duration::from_secs(300), channel.next_event())
+        .await
+        .expect("the server should have heard three heartbeats by now")
+        .unwrap();
+
+    assert_eq!(
+        event,
+        ChannelEvent::ConversionComplete {
+            format: OutputFormat::Pdf,
+            output_id: "out-1".to_string(),
+        }
+    );
+    // Only a lower bound: the paused clock jumps ahead while frames are in
+    // flight, so it can read later than the third heartbeat really was.
+    let waited = started.elapsed().as_secs();
+    assert!(
+        waited >= 90,
+        "heartbeats should be 30 seconds apart, but three took {waited}s"
+    );
+}
+
+#[tokio::test]
+async fn close_succeeds_after_the_server_closed_the_connection() {
+    let base_url = start_fake_server(|mut ws| {
+        Box::pin(async move {
+            accept_join(&mut ws).await;
+            ws.close(None).await.unwrap();
+            while ws.next().await.is_some() {}
+        })
+    })
+    .await;
+
+    let client = client_for(base_url);
+    let mut channel = client.open_document_channel("doc-1").await.unwrap();
+
+    assert!(matches!(
+        channel.next_event().await,
+        Err(ScribeError::ChannelClosed)
+    ));
+    channel.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn close_succeeds_after_the_connection_was_lost() {
+    let base_url = start_fake_server(|mut ws| {
+        Box::pin(async move {
+            accept_join(&mut ws).await;
+            // Dropped without a closing handshake, as a lost network looks.
+        })
+    })
+    .await;
+
+    let client = client_for(base_url);
+    let mut channel = client.open_document_channel("doc-1").await.unwrap();
+
+    assert!(channel.next_event().await.is_err());
+    channel.close().await.unwrap();
 }

@@ -1,12 +1,15 @@
 //! The real-time document channel (`documents:<id>` over `/socket`).
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::net::TcpStream;
-use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tokio::{net::TcpStream, time::Instant};
+use tokio_tungstenite::{
+    tungstenite::{error::ProtocolError, Error as WsError, Message},
+    MaybeTlsStream, WebSocketStream,
+};
 
 use crate::{
     error::ScribeError,
@@ -17,6 +20,11 @@ type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// A Phoenix channel wire-protocol frame: `[join_ref, ref, topic, event, payload]`.
 type RawFrame = (Option<String>, Option<String>, String, String, Value);
+
+/// How often to send a heartbeat while waiting for a frame. The server closes
+/// a connection it has heard nothing from for about 66 seconds, however much
+/// it's sending; 30 seconds is what Phoenix's own client uses.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
 /// An event pushed asynchronously over a [`DocumentChannel`], outside of a
 /// direct reply to something we sent.
@@ -67,12 +75,19 @@ struct ErrorReason {
 /// Progress on formats that were already converting (or complete) when the
 /// channel was joined arrives as [`ChannelEvent`]s from [`Self::next_event`]
 /// just like anything started with [`Self::start_conversion`] after joining.
+///
+/// Heartbeats keep the connection open only while a call on this channel is
+/// waiting, so keep calling [`Self::next_event`] during a conversion. The
+/// connection can still be lost, for example to a network failure or a server
+/// restart. A conversion carries on without it: open a new channel on the same
+/// document, and don't upload it again.
 pub struct DocumentChannel {
     ws: WsStream,
     topic: String,
     join_ref: String,
     next_ref: u64,
     pending: VecDeque<ChannelEvent>,
+    next_heartbeat: Instant,
 }
 
 impl DocumentChannel {
@@ -81,7 +96,7 @@ impl DocumentChannel {
         let join_ref = "1".to_string();
         send_frame(
             &mut ws,
-            &join_ref,
+            Some(&join_ref),
             &join_ref,
             &topic,
             "phx_join",
@@ -94,6 +109,7 @@ impl DocumentChannel {
             join_ref: join_ref.clone(),
             next_ref: 2,
             pending: VecDeque::new(),
+            next_heartbeat: Instant::now() + HEARTBEAT_INTERVAL,
         };
         channel.await_reply(&join_ref).await?;
         Ok(channel)
@@ -137,7 +153,7 @@ impl DocumentChannel {
         }
         send_frame(
             &mut self.ws,
-            &self.join_ref,
+            Some(&self.join_ref),
             &ref_,
             &self.topic,
             "start_conversion",
@@ -172,14 +188,24 @@ impl DocumentChannel {
         }
     }
 
+    /// Closes the connection. One that's already closed or lost is fine, since
+    /// that's what this is for.
+    ///
     /// # Errors
     ///
-    /// Returns [`ScribeError::WebSocket`] if sending the close frame fails.
+    /// Returns [`ScribeError::WebSocket`] if closing the connection fails with
+    /// it still open.
     pub async fn close(mut self) -> Result<(), ScribeError> {
-        self.ws
-            .close(None)
-            .await
-            .map_err(|e| ScribeError::WebSocket(Box::new(e)))
+        match self.ws.close(None).await {
+            Ok(())
+            | Err(
+                WsError::ConnectionClosed
+                | WsError::AlreadyClosed
+                | WsError::Protocol(ProtocolError::SendAfterClosing)
+                | WsError::Io(_),
+            ) => Ok(()),
+            Err(e) => Err(ScribeError::WebSocket(Box::new(e))),
+        }
     }
 
     fn take_ref(&mut self) -> String {
@@ -188,9 +214,30 @@ impl DocumentChannel {
         r
     }
 
+    async fn send_heartbeat(&mut self) -> Result<(), ScribeError> {
+        let ref_ = self.take_ref();
+        self.next_heartbeat = Instant::now() + HEARTBEAT_INTERVAL;
+        send_frame(
+            &mut self.ws,
+            None,
+            &ref_,
+            "phoenix",
+            "heartbeat",
+            Value::Object(serde_json::Map::new()),
+        )
+        .await
+    }
+
     async fn recv_frame(&mut self) -> Result<RawFrame, ScribeError> {
         loop {
-            return match self.ws.next().await {
+            if Instant::now() >= self.next_heartbeat {
+                self.send_heartbeat().await?;
+            }
+            let Ok(message) = tokio::time::timeout_at(self.next_heartbeat, self.ws.next()).await
+            else {
+                continue;
+            };
+            return match message {
                 Some(Ok(Message::Text(text))) => {
                     Ok(serde_json::from_str::<RawFrame>(text.as_str())?)
                 }
@@ -227,14 +274,14 @@ impl DocumentChannel {
 
 async fn send_frame(
     ws: &mut WsStream,
-    join_ref: &str,
+    join_ref: Option<&str>,
     ref_: &str,
     topic: &str,
     event: &str,
     payload: Value,
 ) -> Result<(), ScribeError> {
     let frame: RawFrame = (
-        Some(join_ref.to_string()),
+        join_ref.map(str::to_string),
         Some(ref_.to_string()),
         topic.to_string(),
         event.to_string(),

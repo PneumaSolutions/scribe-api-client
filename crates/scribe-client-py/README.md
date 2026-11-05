@@ -132,7 +132,8 @@ finally:
 
 Calling `start_conversion` for a format that's already complete just returns that output's existing id without converting it again. Calling it for a format that's still converting raises `ConversionInProgressError`, like any other running conversion.
 
-`next_event()` blocks until the next event arrives and returns it as a dict tagged by `event["type"]`:
+`next_event()` blocks until the next event arrives and returns it as a dict tagged by `event["type"]`. It sends heartbeats while it waits, which is what keeps the connection open during a long conversion, so keep calling it rather than doing other long work between calls. The server closes a connection it hasn't heard from for about a minute. The connection can still be lost, for example to a network failure, which raises `ScribeApiError`. The conversion carries on without it: open a new channel on the same document, and don't upload it again.
+
 
 | `type`                | other keys                       | meaning                                    |
 | ---------------------- | --------------------------------- | ------------------------------------------- |
