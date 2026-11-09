@@ -1678,7 +1678,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-client"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -1698,7 +1698,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-client-ffi"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-util",
  "reqwest",
@@ -1714,7 +1714,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-client-py"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "pyo3",
  "pyo3-build-config",
