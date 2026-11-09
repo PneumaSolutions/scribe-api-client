@@ -95,6 +95,18 @@ client.update_settings(document_id, {"large_print": True})
 
 `update_settings` takes a plain dict; only the keys you pass are changed server-side.
 
+## Voices and their samples
+
+`voices()` lists the text-to-speech voices by dialect, each as a `(name, short_name, has_sample)` triple. A voice whose `has_sample` is true has a short MP3 the user can listen to before choosing it, as the Scribe app lets them. `voice_sample_url(short_name)` gives its URL, which needs no token, so you can hand it straight to a media player to stream. `voice_sample(short_name)` downloads the MP3 bytes instead. Both raise `NotFoundError` when there's no sample.
+
+```python
+voices = client.voices()
+name, short_name, has_sample = voices["en-US"][0]
+if has_sample:
+    play(client.voice_sample_url(short_name))  # or: data = client.voice_sample(short_name)
+client.update_settings(document_id, {"voices": {"en-US": short_name}})
+```
+
 ## Converting to another format
 
 Creating a document starts only the `html_stream` conversion. Converting to any other format — `pdf`, `epub`, `daisy`, `docx`, `brf`, `mp3`, `offline_html`, `mobi` — happens over a **real-time channel**, not a REST call, so the server can guarantee it's subscribed to progress on whatever it just started converting.

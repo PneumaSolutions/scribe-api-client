@@ -417,4 +417,17 @@ impl FfiScribeClient {
             })
             .map_err(Into::into)
     }
+
+    /// Where a voice's sample MP3 can be played from, without a token, so a
+    /// media player can stream it. Only voices with `has_sample` have one.
+    pub fn voice_sample_url(&self, short_name: String) -> Result<String, ScribeError> {
+        self.inner.voice_sample_url(&short_name).map_err(Into::into)
+    }
+
+    /// A voice's sample, as MP3 bytes. `ScribeError::NotFound` if it has none.
+    pub fn voice_sample(&self, short_name: String) -> Result<Vec<u8>, ScribeError> {
+        runtime()
+            .block_on(self.inner.voice_sample(&short_name))
+            .map_err(Into::into)
+    }
 }

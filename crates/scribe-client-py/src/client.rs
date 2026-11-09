@@ -208,4 +208,23 @@ impl PyScribeClient {
             })
             .map_err(to_py_err)
     }
+
+    /// Where a voice's sample MP3 can be played from, without a token, so a
+    /// media player can stream it. Only voices whose `has_sample` is true
+    /// have one. Raises `NotFoundError` for a name that can't be a voice's.
+    fn voice_sample_url(&self, short_name: &str) -> PyResult<String> {
+        self.inner.voice_sample_url(short_name).map_err(to_py_err)
+    }
+
+    /// A voice's sample, as MP3 bytes. Raises `NotFoundError` if it has none.
+    fn voice_sample<'py>(
+        &self,
+        py: Python<'py>,
+        short_name: &str,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let data = py
+            .detach(|| runtime().block_on(self.inner.voice_sample(short_name)))
+            .map_err(to_py_err)?;
+        Ok(PyBytes::new(py, &data))
+    }
 }

@@ -719,6 +719,52 @@ impl ScribeClient {
         Ok(response.voices)
     }
 
+    /// Where the sample of a voice can be played from: an MP3 that needs no
+    /// token, so it can go straight to a media player, which can start it
+    /// before the whole file has arrived. `short_name` is a voice's short
+    /// name from [`voices`](Self::voices); only voices whose `has_sample`
+    /// is true have one.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`] if `short_name` can't be a voice's
+    /// name (it may only have letters, digits and `-`).
+    pub fn voice_sample_url(&self, short_name: &str) -> Result<String, ScribeError> {
+        Ok(self.voice_sample_location(short_name)?.into())
+    }
+
+    /// The sample of a voice, as MP3 bytes. See
+    /// [`voice_sample_url`](Self::voice_sample_url), which a player can
+    /// stream instead.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScribeError::NotFound`] if the voice has no sample, or
+    /// [`ScribeError::Http`]/[`ScribeError::Api`] on other request failures.
+    pub async fn voice_sample(&self, short_name: &str) -> Result<Vec<u8>, ScribeError> {
+        let url = self.voice_sample_location(short_name)?;
+        let response = self.http.get(url).send().await?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(no_sample(short_name));
+        }
+        let response = response.error_for_status_or_json_error().await?;
+        Ok(response.bytes().await?.to_vec())
+    }
+
+    fn voice_sample_location(&self, short_name: &str) -> Result<Url, ScribeError> {
+        let is_name = !short_name.is_empty()
+            && short_name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-');
+        if !is_name {
+            return Err(no_sample(short_name));
+        }
+        let mut url = self.base_url.clone();
+        url.set_path(&format!("/sounds/tts-samples/{short_name}.mp3"));
+        url.set_query(None);
+        Ok(url)
+    }
+
     /// Sends a request built by `build`, retrying once with a
     /// force-refreshed token if the server returns `401`. Returns the
     /// validated response for callers that need to read the body themselves.
@@ -748,6 +794,12 @@ impl ScribeClient {
             .json()
             .await
             .map_err(Into::into)
+    }
+}
+
+fn no_sample(short_name: &str) -> ScribeError {
+    ScribeError::NotFound {
+        message: format!("There's no sample of the voice {short_name:?}."),
     }
 }
 

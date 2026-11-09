@@ -210,14 +210,40 @@ pub struct Settings {
     pub notify_when_complete: bool,
 }
 
+/// The server takes `dialects` and `voices` as strings holding JSON, though
+/// it gives them back decoded, so an object written back as it was read is
+/// sent as its JSON. A string is sent as it is.
+#[allow(clippy::ref_option, reason = "serde's serialize_with signature")]
+fn as_json_string<S: serde::Serializer>(
+    value: &Option<serde_json::Value>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match value {
+        Some(serde_json::Value::String(text)) => serializer.serialize_str(text),
+        Some(other) => serializer.serialize_str(&other.to_string()),
+        None => serializer.serialize_none(),
+    }
+}
+
 /// A partial update to a document's conversion settings
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SettingsUpdate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Language code to dialect locale. An object is sent as the string of
+    /// JSON the server takes.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "as_json_string"
+    )]
     pub dialects: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Dialect locale to voice short name, sent as `dialects` is.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "as_json_string"
+    )]
     pub voices: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tts_gender: Option<String>,

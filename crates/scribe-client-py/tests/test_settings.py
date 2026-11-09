@@ -133,3 +133,40 @@ def test_voices_returns_map_of_lists(mock_server):
     client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
     voices = client.voices()
     assert voices == {"en-US": [("Jenny (Female)", "en-US-JennyNeural", True)]}
+
+
+def test_voice_sample_downloads_the_mp3_without_a_token(mock_server):
+    mock_server.add_bytes_route(
+        "GET", "/sounds/tts-samples/en-US-JennyNeural.mp3", 200, b"ID3mp3", "audio/mpeg"
+    )
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    assert client.voice_sample("en-US-JennyNeural") == b"ID3mp3"
+    headers = {k.lower() for k in mock_server.recorded_requests[0]["headers"]}
+    assert "authorization" not in headers
+
+
+def test_voice_sample_raises_not_found_without_a_sample(mock_server):
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    with pytest.raises(NotFoundError):
+        client.voice_sample("xx-XX-NobodyNeural")
+
+
+def test_voice_sample_url_names_the_file_and_refuses_other_paths(mock_server):
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    assert (
+        client.voice_sample_url("en-US-JennyNeural")
+        == f"{mock_server.base_url}/sounds/tts-samples/en-US-JennyNeural.mp3"
+    )
+    for bad in ["", "../secret", "a/b"]:
+        with pytest.raises(NotFoundError):
+            client.voice_sample_url(bad)
+
+
+def test_update_settings_sends_a_voices_dict_as_the_json_string_the_server_takes(mock_server):
+    import json
+
+    mock_server.add_json_route("PATCH", "/api/documents/doc-1/settings", 200, settings_body())
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    client.update_settings("doc-1", {"voices": {"en-US": "en-US-JennyNeural"}})
+    body = json.loads(mock_server.recorded_requests[0]["body"])
+    assert json.loads(body["settings"]["voices"]) == {"en-US": "en-US-JennyNeural"}

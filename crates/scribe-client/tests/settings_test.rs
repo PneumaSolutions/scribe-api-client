@@ -277,3 +277,67 @@ async fn update_default_settings_sends_voices_as_a_json_string() {
     };
     client.update_default_settings(&update).await.unwrap();
 }
+
+#[tokio::test]
+async fn voice_sample_downloads_the_mp3_without_a_token() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/sounds/tts-samples/en-US-JennyNeural.mp3"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ID3mp3".to_vec()))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let data = client.voice_sample("en-US-JennyNeural").await.unwrap();
+    assert_eq!(data, b"ID3mp3");
+    let requests = server.received_requests().await.unwrap();
+    assert!(requests[0].headers.get("authorization").is_none());
+}
+
+#[tokio::test]
+async fn voice_sample_maps_a_missing_sample_to_not_found() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("<html>Not Found</html>"))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let err = client.voice_sample("xx-XX-NobodyNeural").await.unwrap_err();
+    assert!(matches!(err, ScribeError::NotFound { .. }), "{err:?}");
+}
+
+#[tokio::test]
+async fn voice_sample_url_names_the_file_and_refuses_other_paths() {
+    let server = MockServer::start().await;
+    let client = client_for(&server, valid_tokens());
+    assert_eq!(
+        client.voice_sample_url("en-US-JennyNeural").unwrap(),
+        format!("{}/sounds/tts-samples/en-US-JennyNeural.mp3", server.uri())
+    );
+    for bad in ["", "../secret", "a/b", "a.mp3", "a?b"] {
+        assert!(
+            matches!(
+                client.voice_sample_url(bad),
+                Err(ScribeError::NotFound { .. })
+            ),
+            "{bad}"
+        );
+        assert!(client.voice_sample(bad).await.is_err(), "{bad}");
+    }
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[test]
+fn voices_and_dialects_objects_go_out_as_json_strings() {
+    let update = SettingsUpdate {
+        voices: Some(serde_json::json!({"en-US": "en-US-JennyNeural"})),
+        dialects: Some(serde_json::Value::String(r#"{"en":"en-US"}"#.into())),
+        ..Default::default()
+    };
+    let body = serde_json::to_value(&update).unwrap();
+    assert_eq!(body["voices"], r#"{"en-US":"en-US-JennyNeural"}"#);
+    assert_eq!(body["dialects"], r#"{"en":"en-US"}"#);
+    assert!(serde_json::to_value(SettingsUpdate::default())
+        .unwrap()
+        .get("voices")
+        .is_none());
+}
