@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 use url::Url;
 
 use crate::{
-    auth::{AuthClient, TokenSet},
+    auth::{accept_language, AuthClient, TokenSet},
     channel::DocumentChannel,
     error::ScribeError,
     model::{
@@ -59,6 +59,7 @@ pub struct ScribeClient {
     base_url: Url,
     auth: AuthClient,
     tokens: Arc<Mutex<TokenSet>>,
+    locale: Option<String>,
 }
 
 impl ScribeClient {
@@ -74,7 +75,23 @@ impl ScribeClient {
             base_url,
             auth,
             tokens: Arc::new(Mutex::new(tokens)),
+            locale: None,
         }
+    }
+
+    /// Asks the server for everything it writes in `locale`, a language tag
+    /// such as `de` or `pt-BR`, usually the language the app's own interface
+    /// is in: error messages, the names of languages, voices and braille
+    /// tables, document channel errors, the image descriptions in
+    /// conversions started on a [`DocumentChannel`], and the pushes sent to a
+    /// device registered with [`Self::register_device`]. Without one, the
+    /// server uses the account's language, or English.
+    #[must_use]
+    pub fn with_locale(mut self, locale: impl Into<String>) -> Self {
+        let locale = locale.into();
+        self.auth = self.auth.with_locale(locale.clone());
+        self.locale = Some(locale);
+        self
     }
 
     /// The current access token, refreshing first if it's missing or about
@@ -301,6 +318,11 @@ impl ScribeClient {
         url.query_pairs_mut()
             .append_pair("vsn", "2.0.0")
             .append_pair("token", token);
+        // Phoenix doesn't hand the socket the upgrade's Accept-Language, so
+        // the language goes along as a connect parameter instead.
+        if let Some(locale) = &self.locale {
+            url.query_pairs_mut().append_pair("locale", locale);
+        }
         let (ws, _response) = tokio_tungstenite::connect_async(url.as_str())
             .await
             .map_err(|e| ScribeError::WebSocket(Box::new(e)))?;
@@ -367,11 +389,12 @@ impl ScribeClient {
             .redirect(reqwest::redirect::Policy::none())
             .build()?;
 
+        let request = |token: &str| self.localized(client.get(url.clone()).bearer_auth(token));
         let token = self.access_token().await?;
-        let mut response = client.get(url.clone()).bearer_auth(&token).send().await?;
+        let mut response = request(&token).send().await?;
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             let token = self.force_refresh().await?;
-            response = client.get(url.clone()).bearer_auth(&token).send().await?;
+            response = request(&token).send().await?;
         }
 
         if response.status().is_redirection() {
@@ -773,14 +796,18 @@ impl ScribeClient {
         F: Fn(&str) -> reqwest::RequestBuilder,
     {
         let token = self.access_token().await?;
-        let response = build(&token).send().await?;
+        let response = self.localized(build(&token)).send().await?;
         let response = if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             let token = self.force_refresh().await?;
-            build(&token).send().await?
+            self.localized(build(&token)).send().await?
         } else {
             response
         };
         response.error_for_status_or_json_error().await
+    }
+
+    fn localized(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        accept_language(request, self.locale.as_deref())
     }
 
     /// Like [`with_auth_retry_raw`] but deserializes the response body as JSON.

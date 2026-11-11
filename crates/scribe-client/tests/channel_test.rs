@@ -494,3 +494,100 @@ async fn close_succeeds_after_the_connection_was_lost() {
     assert!(channel.next_event().await.is_err());
     channel.close().await.unwrap();
 }
+
+/// Answers the join with `reply`, then pushes each of `pushes` as an event.
+async fn serve_join(reply: Value, pushes: Vec<(&'static str, Value)>) -> Url {
+    start_fake_server(move |mut ws| {
+        Box::pin(async move {
+            let (join_ref, ref_, topic, _event, _payload) = recv(&mut ws).await;
+            let join_ref = join_ref.unwrap();
+            send(
+                &mut ws,
+                &join_ref,
+                Some(&ref_.unwrap()),
+                &topic,
+                "phx_reply",
+                reply,
+            )
+            .await;
+            for (event, payload) in pushes {
+                send(&mut ws, &join_ref, None, &topic, event, payload).await;
+            }
+        })
+    })
+    .await
+}
+
+#[tokio::test]
+async fn a_join_error_shows_the_servers_message() {
+    let base_url = serve_join(
+        serde_json::json!({"status": "error", "response": {
+            "reason": "forbidden",
+            "message": "Sie haben keine Berechtigung, auf dieses Dokument zuzugreifen."
+        }}),
+        vec![],
+    )
+    .await;
+    match client_for(base_url).open_document_channel("doc-1").await {
+        Err(ScribeError::Forbidden { message }) => {
+            assert_eq!(
+                message,
+                "Sie haben keine Berechtigung, auf dieses Dokument zuzugreifen."
+            );
+        }
+        Err(other) => panic!("expected Forbidden, got {other:?}"),
+        Ok(_) => panic!("expected Forbidden, got a channel"),
+    }
+}
+
+#[tokio::test]
+async fn a_join_error_without_a_message_falls_back_to_english() {
+    let base_url = serve_join(
+        serde_json::json!({"status": "error", "response": {"reason": "not_found"}}),
+        vec![],
+    )
+    .await;
+    match client_for(base_url).open_document_channel("doc-1").await {
+        Err(ScribeError::NotFound { message }) => {
+            assert_eq!(message, "We couldn't find that document.");
+        }
+        Err(other) => panic!("expected NotFound, got {other:?}"),
+        Ok(_) => panic!("expected NotFound, got a channel"),
+    }
+}
+
+#[tokio::test]
+async fn an_error_event_carries_the_servers_message_when_there_is_one() {
+    let base_url = serve_join(
+        serde_json::json!({"status": "ok", "response": {}}),
+        vec![
+            (
+                "error",
+                serde_json::json!({
+                    "reason": "invalid_password",
+                    "message": "Ce mot de passe n'a pas fonctionné."
+                }),
+            ),
+            ("error", serde_json::json!({"reason": "conversion_failed"})),
+        ],
+    )
+    .await;
+    let mut channel = client_for(base_url)
+        .open_document_channel("doc-1")
+        .await
+        .unwrap();
+    assert_eq!(
+        channel.next_event().await.unwrap(),
+        ChannelEvent::Error {
+            reason: "invalid_password".into(),
+            message: Some("Ce mot de passe n'a pas fonctionné.".into()),
+        }
+    );
+    assert_eq!(
+        channel.next_event().await.unwrap(),
+        ChannelEvent::Error {
+            reason: "conversion_failed".into(),
+            message: None,
+        }
+    );
+}

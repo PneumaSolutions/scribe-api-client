@@ -33,18 +33,25 @@ pub trait DownloadProgress: Send + Sync {
 
 #[uniffi::export]
 impl FfiScribeClient {
-    #[uniffi::constructor]
+    /// `locale` is the language tag the app's interface is in, such as `de`
+    /// or `pt-BR`, which the server then writes its messages, image
+    /// descriptions and pushes in. Without one, it uses the account's
+    /// language, or English.
+    #[uniffi::constructor(default(locale = None))]
     pub fn new(
         base_url: String,
         client_id: String,
         tokens: TokenSet,
+        locale: Option<String>,
     ) -> Result<Arc<Self>, ScribeError> {
         let base_url = parse_url(&base_url)?;
         let http = http_client();
         let core_tokens: scribe_client_core::TokenSet = tokens.into();
-        Ok(Arc::new(FfiScribeClient {
-            inner: ScribeClient::new(http, base_url, client_id, core_tokens),
-        }))
+        let mut inner = ScribeClient::new(http, base_url, client_id, core_tokens);
+        if let Some(locale) = locale {
+            inner = inner.with_locale(locale);
+        }
+        Ok(Arc::new(FfiScribeClient { inner }))
     }
 
     /// Returns the current token set, including any access token that was

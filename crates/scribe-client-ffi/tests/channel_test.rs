@@ -118,7 +118,8 @@ async fn ffi_join_start_conversion_and_events() {
         })
     })
     .await;
-    let client = FfiScribeClient::new(base_url, "test-client-id".into(), valid_tokens()).unwrap();
+    let client =
+        FfiScribeClient::new(base_url, "test-client-id".into(), valid_tokens(), None).unwrap();
     let (output_id, first_event, second_event) = tokio::task::spawn_blocking(move || {
         let channel = client.open_document_channel("doc-1".into()).unwrap();
         let output_id = channel.start_conversion(OutputFormat::Pdf, None).unwrap();
@@ -169,7 +170,8 @@ async fn ffi_open_channel_maps_not_found() {
         })
     })
     .await;
-    let client = FfiScribeClient::new(base_url, "test-client-id".into(), valid_tokens()).unwrap();
+    let client =
+        FfiScribeClient::new(base_url, "test-client-id".into(), valid_tokens(), None).unwrap();
     let result = tokio::task::spawn_blocking(move || client.open_document_channel("doc-1".into()))
         .await
         .unwrap();
@@ -209,7 +211,8 @@ async fn ffi_start_conversion_maps_needs_purchase() {
         })
     })
     .await;
-    let client = FfiScribeClient::new(base_url, "test-client-id".into(), valid_tokens()).unwrap();
+    let client =
+        FfiScribeClient::new(base_url, "test-client-id".into(), valid_tokens(), None).unwrap();
     let result = tokio::task::spawn_blocking(move || {
         let channel = client.open_document_channel("doc-1".into()).unwrap();
         channel.start_conversion(OutputFormat::Pdf, None)
@@ -243,7 +246,8 @@ async fn ffi_close_is_idempotent() {
         })
     })
     .await;
-    let client = FfiScribeClient::new(base_url, "test-client-id".into(), valid_tokens()).unwrap();
+    let client =
+        FfiScribeClient::new(base_url, "test-client-id".into(), valid_tokens(), None).unwrap();
     tokio::task::spawn_blocking(move || {
         let channel = client.open_document_channel("doc-1".into()).unwrap();
         channel.close().unwrap();

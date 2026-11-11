@@ -330,3 +330,25 @@ def test_create_document_from_file_omits_an_absent_password(mock_server):
     client.create_document_from_file("plain.pdf", b"%PDF")
     [request] = mock_server.recorded_requests
     assert b"document[password]" not in request["body"]
+
+
+def test_a_locale_is_sent_as_accept_language(mock_server):
+    mock_server.add_json_route(
+        "POST", "/api/documents", 200, {"document_id": "doc-3"}
+    )
+    client = ScribeClient(
+        mock_server.base_url, "test-client-id", valid_tokens(), locale="de"
+    )
+    client.create_document_from_url("https://example.com/report.pdf")
+    [request] = mock_server.recorded_requests
+    assert request["headers"]["accept-language"] == "de"
+
+
+def test_without_a_locale_no_accept_language_is_sent(mock_server):
+    mock_server.add_json_route(
+        "POST", "/api/documents", 200, {"document_id": "doc-4"}
+    )
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    client.create_document_from_url("https://example.com/report.pdf")
+    [request] = mock_server.recorded_requests
+    assert "accept-language" not in request["headers"]

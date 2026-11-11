@@ -113,6 +113,7 @@ pub struct AuthClient {
     http: reqwest::Client,
     base_url: Url,
     client_id: String,
+    locale: Option<String>,
 }
 
 impl AuthClient {
@@ -121,7 +122,22 @@ impl AuthClient {
             http,
             base_url,
             client_id: client_id.into(),
+            locale: None,
         }
+    }
+
+    /// Asks the server for its messages in `locale`, a language tag such as
+    /// `de` or `pt-BR`, usually the language the app's own interface is in.
+    /// The sign-in page from [`Self::authorization_url`] opens in it too.
+    /// Without one, the server uses the account's language, or English.
+    #[must_use]
+    pub fn with_locale(mut self, locale: impl Into<String>) -> Self {
+        self.locale = Some(locale.into());
+        self
+    }
+
+    pub(crate) fn locale(&self) -> Option<&str> {
+        self.locale.as_deref()
     }
 
     /// Builds the URL the user's browser should be sent to. `redirect_uri`
@@ -174,6 +190,11 @@ impl AuthClient {
         let mut url = self.base_url.clone();
         url.set_path("/auth/logout");
         url.query_pairs_mut().append_pair("next", &next);
+        // The website keeps `locale` in a cookie that logging out leaves
+        // alone, so the sign-in page the redirects end on is in it too.
+        if let Some(locale) = &self.locale {
+            url.query_pairs_mut().append_pair("locale", locale);
+        }
         url
     }
 
@@ -243,7 +264,10 @@ impl AuthClient {
         let mut url = self.base_url.clone();
         url.set_path("/oauth/revoke");
         let body = [("client_id", self.client_id.as_str()), ("token", token)];
-        let response = self.http.post(url).form(&body).send().await?;
+        let response = accept_language(self.http.post(url), self.locale())
+            .form(&body)
+            .send()
+            .await?;
         let status = response.status();
         if status.is_success() {
             return Ok(());
@@ -267,7 +291,10 @@ impl AuthClient {
         url: Url,
         body: &[(&str, &str)],
     ) -> Result<TokenSet, ScribeError> {
-        let response = self.http.post(url).form(body).send().await?;
+        let response = accept_language(self.http.post(url), self.locale())
+            .form(body)
+            .send()
+            .await?;
         let status = response.status();
         if status.is_success() {
             let parsed: TokenResponse = response.json().await?;
@@ -294,6 +321,18 @@ impl AuthClient {
                 }),
             }
         }
+    }
+}
+
+/// Adds `Accept-Language` for `locale`, which is how the server picks the
+/// language of what it says in a response.
+pub(crate) fn accept_language(
+    request: reqwest::RequestBuilder,
+    locale: Option<&str>,
+) -> reqwest::RequestBuilder {
+    match locale {
+        Some(locale) => request.header(reqwest::header::ACCEPT_LANGUAGE, locale),
+        None => request,
     }
 }
 

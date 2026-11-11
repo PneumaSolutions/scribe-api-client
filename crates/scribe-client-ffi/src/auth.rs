@@ -25,17 +25,35 @@ pub struct FfiAuthClient {
     http: Client,
     base_url: Url,
     client_id: String,
+    locale: Option<String>,
+}
+
+impl FfiAuthClient {
+    fn auth(&self) -> AuthClient {
+        let auth = AuthClient::new(self.http.clone(), self.base_url.clone(), &self.client_id);
+        match &self.locale {
+            Some(locale) => auth.with_locale(locale.clone()),
+            None => auth,
+        }
+    }
 }
 
 #[uniffi::export]
 impl FfiAuthClient {
-    #[uniffi::constructor]
-    pub fn new(base_url: String, client_id: String) -> Result<Arc<Self>, ScribeError> {
+    /// `locale` is the language tag the app's interface is in, such as `de`
+    /// or `pt-BR`. The sign-in page and the server's messages are then in it.
+    #[uniffi::constructor(default(locale = None))]
+    pub fn new(
+        base_url: String,
+        client_id: String,
+        locale: Option<String>,
+    ) -> Result<Arc<Self>, ScribeError> {
         let base_url = parse_url(&base_url)?;
         Ok(Arc::new(FfiAuthClient {
             http: http_client(),
             base_url,
             client_id,
+            locale,
         }))
     }
 
@@ -46,7 +64,7 @@ impl FfiAuthClient {
         redirect_uri: String,
         pkce_challenge: String,
     ) -> Result<String, ScribeError> {
-        let auth = AuthClient::new(self.http.clone(), self.base_url.clone(), &self.client_id);
+        let auth = self.auth();
         Ok(auth
             .authorization_url_with_challenge(&redirect_uri, &pkce_challenge)
             .to_string())
@@ -61,7 +79,7 @@ impl FfiAuthClient {
         code: String,
         verifier: String,
     ) -> Result<TokenSet, ScribeError> {
-        let auth = AuthClient::new(self.http.clone(), self.base_url.clone(), &self.client_id);
+        let auth = self.auth();
         runtime()
             .block_on(auth.exchange_code(&redirect_uri, &code, &verifier))
             .map(Into::into)
@@ -70,7 +88,7 @@ impl FfiAuthClient {
 
     /// Exchanges a refresh token for a new token set.
     pub fn refresh(&self, refresh_token: String) -> Result<TokenSet, ScribeError> {
-        let auth = AuthClient::new(self.http.clone(), self.base_url.clone(), &self.client_id);
+        let auth = self.auth();
         runtime()
             .block_on(auth.refresh(&refresh_token))
             .map(Into::into)
@@ -82,7 +100,7 @@ impl FfiAuthClient {
     /// expires. Pass the refresh token when there is one: revoking it takes
     /// the access tokens issued alongside it with it.
     pub fn revoke(&self, token: String) -> Result<(), ScribeError> {
-        let auth = AuthClient::new(self.http.clone(), self.base_url.clone(), &self.client_id);
+        let auth = self.auth();
         runtime().block_on(auth.revoke(&token)).map_err(Into::into)
     }
 }

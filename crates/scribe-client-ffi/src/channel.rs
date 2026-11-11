@@ -24,7 +24,12 @@ pub enum ChannelEvent {
     },
     /// The server reported an error unrelated to a specific request the
     /// app made (e.g. a conversion failed after it had already started).
-    Error { reason: String },
+    /// `message` is a sentence to show for it, in the client's locale, from
+    /// servers that send one.
+    Error {
+        reason: String,
+        message: Option<String>,
+    },
     /// The document is password-protected and hasn't been unlocked yet.
     /// Pushed on join, since a locked document has no outputs and would
     /// otherwise look like a silent channel. Prompt for the password and
@@ -51,7 +56,7 @@ impl From<CoreChannelEvent> for ChannelEvent {
                     output_id,
                 }
             }
-            CoreChannelEvent::Error { reason } => Self::Error { reason },
+            CoreChannelEvent::Error { reason, message } => Self::Error { reason, message },
             CoreChannelEvent::PasswordRequired => Self::PasswordRequired,
         }
     }

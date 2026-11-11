@@ -47,7 +47,12 @@ pub enum ChannelEvent {
     },
     /// The server reported an error unrelated to a specific request we
     /// made (e.g. a conversion failed after it had already started).
-    Error { reason: String },
+    /// `message` is a sentence to show for it, in the client's language,
+    /// from servers that send one.
+    Error {
+        reason: String,
+        message: Option<String>,
+    },
     /// The document is password-protected and hasn't been unlocked yet.
     /// Pushed on join, since a locked document has no outputs and would
     /// otherwise look like a silent channel. Prompt for the password and
@@ -65,6 +70,8 @@ struct ReplyPayload {
 #[derive(Debug, Deserialize)]
 struct ErrorReason {
     reason: String,
+    #[serde(default)]
+    message: Option<String>,
     #[serde(default)]
     purchase_url: Option<String>,
 }
@@ -315,6 +322,10 @@ fn parse_event(event: &str, payload: &Value) -> Option<ChannelEvent> {
         }),
         "error" => Some(ChannelEvent::Error {
             reason: payload.get("reason")?.as_str()?.to_string(),
+            message: payload
+                .get("message")
+                .and_then(Value::as_str)
+                .map(str::to_string),
         }),
         "password_required" => Some(ChannelEvent::PasswordRequired),
         _ => None,
@@ -325,34 +336,34 @@ fn map_channel_error(payload: Value) -> ScribeError {
     let Ok(err) = serde_json::from_value::<ErrorReason>(payload) else {
         return ScribeError::ChannelClosed;
     };
-    // These channel error frames don't carry a `message` field from the
-    // server yet, so the friendly text here is a client-side fallback for
-    // now (matches the text these codes have always shown) — everything
-    // that already gets a server `message` (HTTP API responses, OAuth
-    // token errors) uses that instead; see error_for_status_or_json_error.
+    // The server's own message is in the language the client asked for.
+    // A server too old to send one gets the English these codes have always
+    // shown.
+    let message = |english: &str| err.message.clone().unwrap_or_else(|| english.to_string());
     match err.reason.as_str() {
         "not_found" => ScribeError::NotFound {
-            message: "We couldn't find that document.".to_string(),
+            message: message("We couldn't find that document."),
         },
         "forbidden" => ScribeError::Forbidden {
-            message: "You don't have permission to access that document.".to_string(),
+            message: message("You don't have permission to access that document."),
         },
         "conversion_in_progress" => ScribeError::ConversionInProgress {
-            message: "A conversion is already in progress for this document.".to_string(),
+            message: message("A conversion is already in progress for this document."),
         },
         "rate_limited" => ScribeError::RateLimited {
-            message: "Rate limited, try again shortly.".to_string(),
+            message: message("Rate limited, try again shortly."),
         },
         "password_required" => ScribeError::PasswordRequired {
-            message: "This document is password-protected. Enter its password to continue."
-                .to_string(),
+            message: message(
+                "This document is password-protected. Enter its password to continue.",
+            ),
         },
         "needs_purchase" => ScribeError::NeedsPurchase {
-            message: "You need to purchase more pages to do that.".to_string(),
-            purchase_url: err.purchase_url.unwrap_or_default(),
+            message: message("You need to purchase more pages to do that."),
+            purchase_url: err.purchase_url.clone().unwrap_or_default(),
         },
         _ => ScribeError::Channel {
-            message: "Something went wrong. Please try again.".to_string(),
+            message: message("Something went wrong. Please try again."),
         },
     }
 }

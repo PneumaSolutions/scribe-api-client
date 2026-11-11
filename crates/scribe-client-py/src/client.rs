@@ -26,13 +26,24 @@ pub(crate) struct PyScribeClient {
 
 #[pymethods]
 impl PyScribeClient {
+    /// `locale` is a language tag such as `de` or `pt-BR`, which the server
+    /// then writes its messages and image descriptions in. Without one, it
+    /// uses the account's language, or English.
     #[new]
-    fn new(base_url: &str, client_id: &str, tokens: PyTokenSet) -> PyResult<Self> {
+    #[pyo3(signature = (base_url, client_id, tokens, locale=None))]
+    fn new(
+        base_url: &str,
+        client_id: &str,
+        tokens: PyTokenSet,
+        locale: Option<&str>,
+    ) -> PyResult<Self> {
         let base_url = parse_url(base_url)?;
         let http = reqwest::Client::new();
-        Ok(PyScribeClient {
-            inner: ScribeClient::new(http, base_url, client_id.to_string(), tokens.inner),
-        })
+        let mut inner = ScribeClient::new(http, base_url, client_id.to_string(), tokens.inner);
+        if let Some(locale) = locale {
+            inner = inner.with_locale(locale);
+        }
+        Ok(PyScribeClient { inner })
     }
 
     /// Creates a document by uploading file bytes directly. Returns the new

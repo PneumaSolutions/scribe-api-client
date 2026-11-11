@@ -19,13 +19,18 @@ pub(crate) struct PyAuthClient {
 
 #[pymethods]
 impl PyAuthClient {
+    /// `locale` is a language tag such as `de` or `pt-BR`. The sign-in page
+    /// and the server's messages are then in it.
     #[new]
-    fn new(base_url: &str, client_id: &str) -> PyResult<Self> {
+    #[pyo3(signature = (base_url, client_id, locale=None))]
+    fn new(base_url: &str, client_id: &str, locale: Option<&str>) -> PyResult<Self> {
         let base_url = parse_url(base_url)?;
         let http = reqwest::Client::new();
-        Ok(PyAuthClient {
-            inner: AuthClient::new(http, base_url, client_id.to_string()),
-        })
+        let mut inner = AuthClient::new(http, base_url, client_id.to_string());
+        if let Some(locale) = locale {
+            inner = inner.with_locale(locale);
+        }
+        Ok(PyAuthClient { inner })
     }
 
     fn authorization_url(&self, redirect_uri: &str, pkce: &PyPkceChallenge) -> String {
