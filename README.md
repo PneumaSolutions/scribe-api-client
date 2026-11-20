@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/PneumaSolutions/scribe-api-client/actions/workflows/ci.yml/badge.svg)](https://github.com/PneumaSolutions/scribe-api-client/actions/workflows/ci.yml) [![crates.io](https://img.shields.io/crates/v/scribe-client.svg)](https://crates.io/crates/scribe-client) [![PyPI](https://img.shields.io/pypi/v/scribe-client.svg)](https://pypi.org/project/scribe-client/) [![docs.rs](https://img.shields.io/docsrs/scribe-client)](https://docs.rs/scribe-client)
 
-Clients for the [Scribe for Documents](https://scribeit.io) API by Pneuma Solutions, which converts documents into accessible formats: HTML, DAISY, EPUB, MP3 audio, and Braille.
+Clients for the [Scribe for Documents](https://scribeit.io) API by Pneuma Solutions, which converts documents into accessible formats: HTML, streaming HTML, offline HTML, tagged PDF, Word (DOCX), EPUB, MOBI, DAISY, MP3 audio, and Braille (BRF).
 
 The client signs in with OAuth 2.0 and PKCE, uploads documents, converts them, follows a conversion live over a WebSocket channel, and downloads the results. It is written once in Rust, and the other languages wrap that same code, so every client behaves the same way.
 

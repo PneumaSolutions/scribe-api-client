@@ -1,6 +1,6 @@
 # scribe-client
 
-A Rust client for the [Scribe for Documents](https://scribeit.io) API by Pneuma Solutions, which converts documents into accessible formats: HTML, DAISY, EPUB, MP3 audio, and Braille.
+A Rust client for the [Scribe for Documents](https://scribeit.io) API by Pneuma Solutions, which converts documents into accessible formats: HTML, streaming HTML, offline HTML, tagged PDF, Word (DOCX), EPUB, MOBI, DAISY, MP3 audio, and Braille (BRF).
 
 It covers signing in (OAuth 2.0 with PKCE), uploading documents, converting them, following a conversion live over a WebSocket channel, downloading the results, and the account and settings around them. The [`scribe-client`](https://pypi.org/project/scribe-client/) Python package is built on it.
 
