@@ -6,6 +6,8 @@ Clients for the [Scribe for Documents](https://scribeit.io) API by Pneuma Soluti
 
 The client signs in with OAuth 2.0 and PKCE, uploads documents, converts them, follows a conversion live over a WebSocket channel, and downloads the results. It is written once in Rust, and the other languages wrap that same code, so every client behaves the same way.
 
+To get access to the API, see [scribeit.io/developer](https://scribeit.io/developer).
+
 ## Packages
 
 | Package | For | Install |
