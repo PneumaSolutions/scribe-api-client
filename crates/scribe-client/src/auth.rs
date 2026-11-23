@@ -9,13 +9,21 @@ use url::Url;
 
 use crate::error::ScribeError;
 
-/// A generated PKCE (RFC 7636) verifier/challenge pair. Always uses the
+/// The secrets for one sign-in: a PKCE (RFC 7636) verifier/challenge pair,
+/// and the `state` value RFC 8252 recommends alongside it. Always uses the
 /// `S256` challenge method; there's no reason for a client we control to
 /// use `plain`, even though the server supports it.
+///
+/// The authorization URL carries [`PkceChallenge::state`], and the server
+/// sends it back on the redirect. Check that it's the same before
+/// exchanging the code, so a redirect that didn't come from this sign-in is
+/// refused: PKCE alone stops a stolen code being used, but not someone else's
+/// code being slipped into this app.
 #[derive(Debug, Clone)]
 pub struct PkceChallenge {
     verifier: String,
     challenge: String,
+    state: String,
 }
 
 impl PkceChallenge {
@@ -25,13 +33,12 @@ impl PkceChallenge {
         // RFC 7636 section 4.1: verifier is 43-128 chars from [A-Z a-z 0-9 - . _ ~].
         // 32 random bytes, base64url-no-pad-encoded, is 43 chars and pulls
         // only from that alphabet.
-        let mut bytes = [0u8; 32];
-        rand::rng().fill_bytes(&mut bytes);
-        let verifier = URL_SAFE_NO_PAD.encode(bytes);
+        let verifier = random_token();
         let challenge = Self::derive_challenge(&verifier);
         PkceChallenge {
             verifier,
             challenge,
+            state: random_token(),
         }
     }
 
@@ -50,6 +57,20 @@ impl PkceChallenge {
     pub fn challenge(&self) -> &str {
         &self.challenge
     }
+
+    /// The value the redirect's `state` parameter must have.
+    #[must_use]
+    pub fn state(&self) -> &str {
+        &self.state
+    }
+}
+
+/// 32 random bytes, base64url-no-pad-encoded: 43 characters, all safe in a
+/// URL.
+fn random_token() -> String {
+    let mut bytes = [0u8; 32];
+    rand::rng().fill_bytes(&mut bytes);
+    URL_SAFE_NO_PAD.encode(bytes)
 }
 
 /// An access/refresh token pair returned by `POST /oauth/token`.
@@ -157,18 +178,19 @@ impl AuthClient {
     /// flow.
     #[must_use]
     pub fn authorization_url(&self, redirect_uri: &str, pkce: &PkceChallenge) -> Url {
-        self.authorization_url_with_challenge(redirect_uri, pkce.challenge())
+        self.authorization_url_with_challenge(redirect_uri, pkce.challenge(), pkce.state())
     }
 
-    /// [`AuthClient::authorization_url`] for callers that hold the challenge on
-    /// its own rather than the whole [`PkceChallenge`] — the FFI hands the
-    /// verifier to the host application to keep between the two halves of the
-    /// flow, so by this point only the challenge string is left.
+    /// [`AuthClient::authorization_url`] for callers that hold the challenge
+    /// and state on their own rather than the whole [`PkceChallenge`] — the
+    /// FFI hands them to the host application to keep between the two halves
+    /// of the flow, so by this point only the strings are left.
     #[must_use]
     pub fn authorization_url_with_challenge(
         &self,
         redirect_uri: &str,
         pkce_challenge: &str,
+        state: &str,
     ) -> Url {
         let mut authorize = self.base_url.clone();
         authorize.set_path("/oauth/authorize");
@@ -178,7 +200,8 @@ impl AuthClient {
             .append_pair("client_id", &self.client_id)
             .append_pair("redirect_uri", redirect_uri)
             .append_pair("code_challenge", pkce_challenge)
-            .append_pair("code_challenge_method", "S256");
+            .append_pair("code_challenge_method", "S256")
+            .append_pair("state", state);
 
         // `next` is a path and query only, never an absolute URL: the server
         // refuses external targets so it cannot be used as an open redirect.
@@ -201,7 +224,8 @@ impl AuthClient {
     /// Exchanges an authorization code (obtained after the user completes
     /// the browser flow at [`AuthClient::authorization_url`]) for a token
     /// set. `verifier` must be the same [`PkceChallenge`] used to build
-    /// that URL.
+    /// that URL, and the redirect's `state` should already have been checked
+    /// against it.
     ///
     /// # Errors
     ///

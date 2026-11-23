@@ -18,10 +18,13 @@ async fn main() -> Result<(), scribe_client::ScribeError> {
     let auth = AuthClient::new(http.clone(), base_url.clone(), client_id);
 
     // Send the user's browser to this URL. Once they sign in, the server
-    // redirects to `redirect_uri` with a `code` query parameter.
+    // redirects to `redirect_uri` with `code` and `state` query parameters.
     let pkce = PkceChallenge::generate();
     println!("{}", auth.authorization_url(redirect_uri, &pkce));
-    let code = "the code from the redirect";
+    let (code, state) = ("the code from the redirect", "the state from the redirect");
+
+    // Refuse a redirect that didn't come from this sign-in.
+    assert_eq!(state, pkce.state(), "sign-in redirect has the wrong state");
 
     // Exchange the code for tokens, which `ScribeClient` then refreshes as
     // needed.

@@ -12,7 +12,8 @@ pub(crate) fn parse_format(raw: &str) -> PyResult<OutputFormat> {
         .ok_or_else(|| PyValueError::new_err(format!("unrecognized output format {raw:?}")))
 }
 
-/// A generated PKCE (RFC 7636) verifier/challenge pair.
+/// The secrets for one sign-in: a PKCE (RFC 7636) verifier/challenge pair,
+/// and the `state` the redirect must bring back.
 #[pyclass(name = "PkceChallenge")]
 pub(crate) struct PyPkceChallenge {
     pub(crate) inner: PkceChallenge,
@@ -35,6 +36,13 @@ impl PyPkceChallenge {
     #[getter]
     fn challenge(&self) -> &str {
         self.inner.challenge()
+    }
+
+    /// The value the redirect's `state` parameter must have. Refuse a
+    /// redirect without it, before exchanging its code.
+    #[getter]
+    fn state(&self) -> &str {
+        self.inner.state()
     }
 
     fn __repr__(&self) -> String {

@@ -15,8 +15,13 @@ pub enum ChannelEvent {
         progress: f64,
     },
     /// A chunk of streamed HTML content. Only sent for the `html_stream`
-    /// format while it's still converting.
-    Chunk { content: String },
+    /// format: live while it converts, and on join for the chunks already
+    /// streamed, so an app that joins late or reconnects misses none.
+    /// A new channel on the same document sends them all again. `index`
+    /// counts up from 0, so chunks can be put in order, a gap noticed, and
+    /// one already shown dropped. Servers from before
+    /// it was added send no `index`, and nothing on join.
+    Chunk { index: Option<u64>, content: String },
     /// A format finished converting.
     ConversionComplete {
         format: OutputFormat,
@@ -49,7 +54,7 @@ impl From<CoreChannelEvent> for ChannelEvent {
                 stage: stage.into(),
                 progress,
             },
-            CoreChannelEvent::Chunk { content } => Self::Chunk { content },
+            CoreChannelEvent::Chunk { index, content } => Self::Chunk { index, content },
             CoreChannelEvent::ConversionComplete { format, output_id } => {
                 Self::ConversionComplete {
                     format: format.into(),

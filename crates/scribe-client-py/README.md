@@ -34,8 +34,12 @@ auth = AuthClient(base_url, client_id)
 pkce = PkceChallenge()
 
 # Send the user to this URL. After they log in and approve, they're
-# redirected to redirect_uri with a `code` query parameter.
+# redirected to redirect_uri with `code` and `state` query parameters.
 url = auth.authorization_url(redirect_uri, pkce)
+
+# Refuse a redirect that didn't come from this sign-in.
+if state != pkce.state:
+    raise RuntimeError("sign-in redirect has the wrong state")
 
 # Exchange the code (and the verifier from the *same* PkceChallenge) for a
 # token set.
@@ -150,7 +154,7 @@ Calling `start_conversion` for a format that's already complete just returns tha
 | `type`                | other keys                       | meaning                                    |
 | ---------------------- | --------------------------------- | ------------------------------------------- |
 | `"status"`              | `format`, `stage`, `progress`      | a conversion's stage or progress changed     |
-| `"chunk"`               | `content`                          | a chunk of streamed HTML (`html_stream` only) |
+| `"chunk"`               | `index`, `content`                 | a chunk of streamed HTML (`html_stream` only), live and again on each join; `index` counts from 0 |
 | `"conversion_complete"` | `format`, `output_id`              | a format finished converting                 |
 | `"error"`               | `reason`                           | an out-of-band error unrelated to a specific call |
 | `"password_required"`   | —                                  | the document is protected and hasn't been unlocked |

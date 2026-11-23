@@ -14,6 +14,7 @@ def test_two_generated_challenges_differ():
     b = PkceChallenge()
     assert a.verifier != b.verifier
     assert a.challenge != b.challenge
+    assert a.state != b.state
 
 
 def test_token_set_round_trips_all_fields():

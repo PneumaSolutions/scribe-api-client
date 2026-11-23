@@ -108,12 +108,14 @@ impl From<TokenSet> for scribe_client_core::TokenSet {
     }
 }
 
-/// The verifier and challenge for a single PKCE session. Keep the `verifier`
-/// secret; pass only the `challenge` in the authorization URL.
+/// The secrets for a single sign-in. Keep the `verifier` secret; the
+/// authorization URL carries the `challenge` and the `state`, and the
+/// redirect must bring the same `state` back.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct PkceSession {
     pub verifier: String,
     pub challenge: String,
+    pub state: String,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

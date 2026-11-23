@@ -44,6 +44,20 @@ fn authorization_url_wraps_the_authorize_request_in_a_logout_redirect() {
     assert_eq!(pairs.get("code_challenge_method").unwrap(), "S256");
     assert_eq!(pairs.get("redirect_uri").unwrap(), "myapp://callback");
     assert_eq!(pairs.get("client_id").unwrap(), "test-client-id");
+    assert_eq!(pairs.get("state").unwrap(), pkce.state());
+}
+
+#[test]
+fn each_sign_in_gets_its_own_state() {
+    let a = PkceChallenge::generate();
+    let b = PkceChallenge::generate();
+    assert_ne!(a.state(), b.state());
+    // As long as the verifier, and as safe in a URL.
+    assert_eq!(a.state().len(), 43);
+    assert!(a
+        .state()
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
 }
 
 #[tokio::test]
