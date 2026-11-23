@@ -38,8 +38,13 @@ pub enum ChannelEvent {
         progress: f64,
     },
     /// A chunk of streamed HTML content. Only sent for the `html_stream`
-    /// format while it's still converting.
-    Chunk { content: String },
+    /// format: live while it converts, and on join for the chunks already
+    /// streamed, so a client that joins late or reconnects misses none.
+    /// A new channel on the same document sends them all again. `index`
+    /// counts up from 0, so chunks can be put in order, a gap noticed, and
+    /// one already shown dropped. Servers from before
+    /// it was added send no `index`, and nothing on join.
+    Chunk { index: Option<u64>, content: String },
     /// A format finished converting.
     ConversionComplete {
         format: OutputFormat,
@@ -107,7 +112,9 @@ impl DocumentChannel {
             &join_ref,
             &topic,
             "phx_join",
-            Value::Object(serde_json::Map::new()),
+            // Asks for the chunks already streamed, so a late join or a
+            // rejoin misses none. Servers from before this ignore it.
+            serde_json::json!({ "replay_chunks": true }),
         )
         .await?;
         let mut channel = DocumentChannel {
@@ -314,6 +321,7 @@ fn parse_event(event: &str, payload: &Value) -> Option<ChannelEvent> {
             })
         }
         "chunk" => Some(ChannelEvent::Chunk {
+            index: payload.get("index").and_then(Value::as_u64),
             content: payload.get("content")?.as_str()?.to_string(),
         }),
         "conversion_complete" => Some(ChannelEvent::ConversionComplete {

@@ -154,7 +154,7 @@ Calling `start_conversion` for a format that's already complete just returns tha
 | `type`                | other keys                       | meaning                                    |
 | ---------------------- | --------------------------------- | ------------------------------------------- |
 | `"status"`              | `format`, `stage`, `progress`      | a conversion's stage or progress changed     |
-| `"chunk"`               | `content`                          | a chunk of streamed HTML (`html_stream` only) |
+| `"chunk"`               | `index`, `content`                 | a chunk of streamed HTML (`html_stream` only), live and again on each join; `index` counts from 0 |
 | `"conversion_complete"` | `format`, `output_id`              | a format finished converting                 |
 | `"error"`               | `reason`                           | an out-of-band error unrelated to a specific call |
 | `"password_required"`   | —                                  | the document is protected and hasn't been unlocked |

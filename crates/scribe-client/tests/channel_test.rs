@@ -77,8 +77,10 @@ async fn send(
 async fn join_then_start_conversion_then_events() {
     let base_url = start_fake_server(|mut ws| {
         Box::pin(async move {
-            let (join_ref, ref_, topic, event, _payload) = recv(&mut ws).await;
+            let (join_ref, ref_, topic, event, payload) = recv(&mut ws).await;
             assert_eq!(event, "phx_join");
+            // So a late join or a rejoin gets the chunks already streamed.
+            assert_eq!(payload, serde_json::json!({"replay_chunks": true}));
             let join_ref = join_ref.unwrap();
             let ref_ = ref_.unwrap();
             send(
@@ -588,6 +590,42 @@ async fn an_error_event_carries_the_servers_message_when_there_is_one() {
         ChannelEvent::Error {
             reason: "conversion_failed".into(),
             message: None,
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_chunk_carries_its_index_when_the_server_sends_one() {
+    let base_url = serve_join(
+        serde_json::json!({"status": "ok", "response": {}}),
+        vec![
+            (
+                "chunk",
+                serde_json::json!({"index": 3, "content": "<p>Page 4</p>"}),
+            ),
+            (
+                "chunk",
+                serde_json::json!({"content": "<p>From an older server</p>"}),
+            ),
+        ],
+    )
+    .await;
+    let mut channel = client_for(base_url)
+        .open_document_channel("doc-1")
+        .await
+        .unwrap();
+    assert_eq!(
+        channel.next_event().await.unwrap(),
+        ChannelEvent::Chunk {
+            index: Some(3),
+            content: "<p>Page 4</p>".to_string()
+        }
+    );
+    assert_eq!(
+        channel.next_event().await.unwrap(),
+        ChannelEvent::Chunk {
+            index: None,
+            content: "<p>From an older server</p>".to_string()
         }
     );
 }
