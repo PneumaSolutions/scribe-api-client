@@ -70,7 +70,22 @@ class IPv6HTTPServer(HTTPServer):
     address_family = socket.AF_INET6
 
 
-def wait_for_redirect(redirect_uri: str, authorize_url: str) -> str:
+def code_from_redirect(query: dict, state: str) -> dict:
+    """The code from a redirect's parsed query string, as `{"code": ...}`,
+    or `{"error": ...}` if sign-in failed or the redirect didn't come from
+    this sign-in (its `state` isn't ours)."""
+    if "error" in query:
+        error = query["error"][0]
+        description = query.get("error_description", [""])[0]
+        return {"error": f"{error}: {description}" if description else error}
+    if query.get("state", [None])[0] != state:
+        return {"error": "the redirect's state doesn't match this sign-in"}
+    if "code" not in query:
+        return {"error": "no code in redirect"}
+    return {"code": query["code"][0]}
+
+
+def wait_for_redirect(redirect_uri: str, authorize_url: str, state: str) -> str:
     """Opens `authorize_url` in a browser, serves `redirect_uri` until the
     browser is redirected to it, and returns the authorization code from
     the query string.
@@ -89,14 +104,10 @@ def wait_for_redirect(redirect_uri: str, authorize_url: str) -> str:
                 self.send_error(404)
                 return
 
-            query = parse_qs(request.query)
-            if "code" in query:
-                result["code"] = query["code"][0]
+            result.update(code_from_redirect(parse_qs(request.query), state))
+            if "code" in result:
                 self.respond(200, "Signed in", "You can close this tab and return to the script.")
             else:
-                error = query.get("error", ["no code in redirect"])[0]
-                description = query.get("error_description", [""])[0]
-                result["error"] = f"{error}: {description}" if description else error
                 self.respond(400, "Sign-in failed", result["error"])
 
         def respond(self, status: int, title: str, message: str):
@@ -137,15 +148,20 @@ def do_pkce_login(base_url: str, client_id: str, redirect_uri: str):
         print("Opening this URL in your browser; log in and approve access:\n")
         print(f"  {authorize_url}\n")
         print(f"Waiting for the redirect to {redirect_uri} ...")
-        code = wait_for_redirect(redirect_uri, authorize_url)
+        code = wait_for_redirect(redirect_uri, authorize_url, pkce.state)
     else:
         print("Open this URL in a browser, log in, and approve access:\n")
         print(f"  {authorize_url}\n")
         print(f"The browser will then go to {redirect_uri}?code=... . Nothing here can")
-        print("receive that, so expect an error page. Copy the code parameter from the")
-        print("address bar and paste it below. A code works once, and only for a few")
+        print("receive that, so expect an error page. Copy the whole address from the")
+        print("address bar and paste it below. Its code works once, and only for a few")
         print("minutes.")
-        code = input("code: ").strip()
+        address = input("address: ").strip()
+        result = code_from_redirect(parse_qs(urlsplit(address).query), pkce.state)
+        if "error" in result:
+            print(f"authorization failed: {result['error']}", file=sys.stderr)
+            sys.exit(1)
+        code = result["code"]
 
     return auth.exchange_code(redirect_uri, code, pkce.verifier)
 

@@ -7,13 +7,15 @@ use scribe_client_core::AuthClient;
 
 use crate::{http_client, parse_url, runtime, PkceSession, ScribeError, TokenSet};
 
-/// Generates a fresh PKCE verifier/challenge pair (RFC 7636, S256 method).
+/// Generates the secrets for a new sign-in: a PKCE verifier/challenge pair
+/// (RFC 7636, S256 method) and a `state` value.
 #[uniffi::export]
 pub fn generate_pkce_session() -> PkceSession {
     let pkce = scribe_client_core::PkceChallenge::generate();
     PkceSession {
         verifier: pkce.verifier().to_string(),
         challenge: pkce.challenge().to_string(),
+        state: pkce.state().to_string(),
     }
 }
 
@@ -58,15 +60,18 @@ impl FfiAuthClient {
     }
 
     /// Returns the URL the user's browser should be sent to.
-    /// `pkce_challenge` is the `challenge` field from [`generate_pkce_session`].
+    /// `pkce_challenge` and `state` are those fields from the same
+    /// [`generate_pkce_session`] call. The redirect carries `state` back:
+    /// refuse it unless it's the same, before exchanging its code.
     pub fn authorization_url(
         &self,
         redirect_uri: String,
         pkce_challenge: String,
+        state: String,
     ) -> Result<String, ScribeError> {
         let auth = self.auth();
         Ok(auth
-            .authorization_url_with_challenge(&redirect_uri, &pkce_challenge)
+            .authorization_url_with_challenge(&redirect_uri, &pkce_challenge, &state)
             .to_string())
     }
 

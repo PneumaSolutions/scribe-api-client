@@ -6,10 +6,10 @@
 //!     cargo run --example pkce_flow -- <base_url> <client_id> <redirect_uri>
 //!
 //! It prints a URL to open in a browser. After logging in and approving
-//! access, the browser will be redirected to `redirect_uri` with a `code`
-//! query parameter; paste that value back into the prompt to complete the
-//! exchange.
-use scribe_client::{AuthClient, PkceChallenge};
+//! access, the browser will be redirected to `redirect_uri` with `code` and
+//! `state` query parameters; paste that whole address back into the prompt
+//! to complete the exchange.
+use scribe_client::{AuthClient, PkceChallenge, Url};
 use std::io::{self, Write};
 
 #[tokio::main]
@@ -26,16 +26,28 @@ async fn main() {
     let authorize_url = auth.authorization_url(&redirect_uri, &pkce);
     println!("Open this URL in a browser, log in, and approve access:\n");
     println!("  {authorize_url}\n");
-    println!("You'll be redirected to {redirect_uri}?code=... ; paste the code below.");
-    print!("code: ");
+    println!("You'll be redirected to {redirect_uri}?code=... ; paste that whole address below.");
+    print!("address: ");
     io::stdout().flush().expect("failed to flush stdout");
-    let mut code = String::new();
+    let mut address = String::new();
     io::stdin()
-        .read_line(&mut code)
-        .expect("failed to read code from stdin");
-    let code = code.trim();
+        .read_line(&mut address)
+        .expect("failed to read the address from stdin");
+    let address: Url = address.trim().parse().expect("the address must be a URL");
+    let param = |name: &str| {
+        address
+            .query_pairs()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.into_owned())
+    };
+    // Refuse a redirect that didn't come from this sign-in.
+    if param("state").as_deref() != Some(pkce.state()) {
+        eprintln!("\nThat address's state doesn't match this sign-in.");
+        std::process::exit(1);
+    }
+    let code = param("code").expect("the address has no code");
     match auth
-        .exchange_code(&redirect_uri, code, pkce.verifier())
+        .exchange_code(&redirect_uri, &code, pkce.verifier())
         .await
     {
         Ok(tokens) => {

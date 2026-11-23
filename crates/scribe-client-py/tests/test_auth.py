@@ -18,6 +18,7 @@ def test_authorization_url_includes_pkce_challenge(mock_server):
     assert query["code_challenge_method"] == ["S256"]
     assert query["redirect_uri"] == ["myapp://callback"]
     assert query["client_id"] == ["test-client-id"]
+    assert query["state"] == [pkce.state]
 
 
 def test_exchange_code_returns_token_set_on_success(mock_server):

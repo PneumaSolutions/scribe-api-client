@@ -34,8 +34,12 @@ auth = AuthClient(base_url, client_id)
 pkce = PkceChallenge()
 
 # Send the user to this URL. After they log in and approve, they're
-# redirected to redirect_uri with a `code` query parameter.
+# redirected to redirect_uri with `code` and `state` query parameters.
 url = auth.authorization_url(redirect_uri, pkce)
+
+# Refuse a redirect that didn't come from this sign-in.
+if state != pkce.state:
+    raise RuntimeError("sign-in redirect has the wrong state")
 
 # Exchange the code (and the verifier from the *same* PkceChallenge) for a
 # token set.
