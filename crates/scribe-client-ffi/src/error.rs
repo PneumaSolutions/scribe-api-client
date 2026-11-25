@@ -97,6 +97,9 @@ impl From<scribe_client_core::ScribeError> for ScribeError {
                     .to_string(),
             },
             scribe_client_core::ScribeError::Channel { message } => Self::Other { message },
+            error @ scribe_client_core::ScribeError::File(_) => Self::Other {
+                message: error.to_string(),
+            },
         }
     }
 }

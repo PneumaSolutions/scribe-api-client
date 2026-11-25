@@ -802,6 +802,43 @@ async fn create_document_sends_a_password_when_one_is_given() {
     assert_eq!(doc.document_id, "doc-1");
 }
 
+#[tokio::test]
+async fn create_document_streams_a_file_from_disk_under_its_own_name() {
+    let file = std::env::temp_dir().join(format!("scribe-upload-{}.pdf", std::process::id()));
+    std::fs::write(&file, b"%PDF streamed from disk").unwrap();
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/documents"))
+        .and(body_string_contains("streamed from disk"))
+        .and(body_string_contains(
+            file.file_name().unwrap().to_str().unwrap(),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "document_id": "doc-1"
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server, valid_tokens());
+    let doc = client
+        .create_document(DocumentSource::Path(file.clone()), None)
+        .await
+        .unwrap();
+    std::fs::remove_file(&file).unwrap();
+    assert_eq!(doc.document_id, "doc-1");
+}
+
+#[tokio::test]
+async fn create_document_from_a_missing_file_fails_before_sending() {
+    let server = MockServer::start().await;
+    let client = client_for(&server, valid_tokens());
+    let missing = std::env::temp_dir().join("scribe-upload-that-is-not-there.pdf");
+    let result = client
+        .create_document(DocumentSource::Path(missing), None)
+        .await;
+    assert!(result.is_err());
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
 fn document_json(title: &str) -> serde_json::Value {
     serde_json::json!({
         "id": "doc-1",

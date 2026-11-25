@@ -1,5 +1,7 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, fs, io, path::PathBuf, sync::Arc, time::Duration};
 
+use bytes::Bytes;
+use futures_util::stream;
 use reqwest::multipart;
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -26,8 +28,83 @@ const REFRESH_SKEW: Duration = Duration::from_secs(300);
 pub enum DocumentSource {
     /// Upload file bytes directly.
     File { file_name: String, bytes: Vec<u8> },
+    /// Upload a file from disk, under its own name. It is read as it is sent,
+    /// so even a 500 MB upload never sits in memory whole.
+    Path(PathBuf),
     /// Have the server fetch the document from a URL.
     Url(String),
+}
+
+/// A [`DocumentSource`] ready to be sent, perhaps twice: a request refused
+/// for an expired token is sent again, so its body must be made again too.
+enum Upload {
+    Bytes {
+        file_name: String,
+        bytes: Bytes,
+    },
+    Path {
+        file_name: String,
+        path: PathBuf,
+        len: u64,
+    },
+    Url(String),
+}
+
+impl Upload {
+    fn new(source: DocumentSource) -> Result<Self, ScribeError> {
+        Ok(match source {
+            DocumentSource::File { file_name, bytes } => Upload::Bytes {
+                file_name,
+                bytes: Bytes::from(bytes),
+            },
+            DocumentSource::Path(path) => {
+                let len = fs::metadata(&path)?.len();
+                let file_name = path
+                    .file_name()
+                    .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+                Upload::Path {
+                    file_name,
+                    path,
+                    len,
+                }
+            }
+            DocumentSource::Url(url) => Upload::Url(url),
+        })
+    }
+
+    fn form(&self) -> multipart::Form {
+        match self {
+            // `Bytes` is shared, not copied, each time the body is made.
+            Upload::Bytes { file_name, bytes } => multipart::Form::new().part(
+                "document[file]",
+                multipart::Part::stream_with_length(bytes.clone(), bytes.len() as u64)
+                    .file_name(file_name.clone()),
+            ),
+            Upload::Path {
+                file_name,
+                path,
+                len,
+            } => multipart::Form::new().part(
+                "document[file]",
+                multipart::Part::stream_with_length(file_body(path), *len)
+                    .file_name(file_name.clone()),
+            ),
+            Upload::Url(url) => multipart::Form::new().text("document[url]", url.clone()),
+        }
+    }
+}
+
+/// The file at `path`, read a piece at a time as the request is sent. A file
+/// that can no longer be opened fails the request with that error.
+fn file_body(path: &PathBuf) -> reqwest::Body {
+    match fs::File::open(path) {
+        Ok(file) => reqwest::Body::wrap_stream(tokio_util::io::ReaderStream::new(
+            tokio::fs::File::from_std(file),
+        )),
+        Err(error) => {
+            reqwest::Body::wrap_stream(stream::once(async move { Err::<Bytes, io::Error>(error) }))
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -145,16 +222,9 @@ impl ScribeClient {
     ) -> Result<CreatedDocument, ScribeError> {
         let mut url = self.base_url.clone();
         url.set_path("/api/documents");
+        let upload = Upload::new(source)?;
         self.with_auth_retry(|token| {
-            let form = match &source {
-                DocumentSource::File { file_name, bytes } => multipart::Form::new().part(
-                    "document[file]",
-                    multipart::Part::bytes(bytes.clone()).file_name(file_name.clone()),
-                ),
-                DocumentSource::Url(source_url) => {
-                    multipart::Form::new().text("document[url]", source_url.clone())
-                }
-            };
+            let form = upload.form();
             let form = match password {
                 Some(password) => form.text("document[password]", password.to_string()),
                 None => form,

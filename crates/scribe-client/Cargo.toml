@@ -25,17 +25,19 @@ native-tls = ["reqwest/native-tls", "tokio-tungstenite/native-tls"]
 
 [dependencies]
 base64 = "0.22.1"
+bytes = "1.12.1"
 futures-util = { version = "0.3.32", default-features = false, features = ["sink"] }
 percent-encoding = "2.3.2"
 rand = "0.10.2"
-reqwest = { version = "0.13.4", default-features = false, features = ["json", "multipart", "form"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "multipart", "form", "stream"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 sha2 = "0.11.0"
 thiserror = "2.0.18"
 time = { version = "0.3.53", features = ["serde", "parsing", "formatting"] }
-tokio = { version = "1.52.3", features = ["rt", "macros", "sync", "time"] }
+tokio = { version = "1.52.3", features = ["rt", "macros", "sync", "time", "fs"] }
 tokio-tungstenite = "0.29.0"
+tokio-util = { version = "0.7.20", default-features = false, features = ["io"] }
 url = "2.5.8"
 
 [dev-dependencies]

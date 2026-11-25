@@ -56,4 +56,7 @@ pub enum ScribeError {
     PasswordRequired { message: String },
     #[error("{message}")]
     Channel { message: String },
+    /// The file given as [`crate::DocumentSource::Path`] couldn't be read.
+    #[error("Couldn't read the file to upload.")]
+    File(#[from] std::io::Error),
 }
