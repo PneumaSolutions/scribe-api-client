@@ -181,7 +181,7 @@ def create_document(client: ScribeClient) -> str:
     if document_path:
         path = Path(document_path)
         print(f"Uploading {path}")
-        return client.create_document_from_file(path.name, path.read_bytes())
+        return client.create_document_from_path(path)
 
     print("set SCRIBE_DOCUMENT_PATH or SCRIBE_DOCUMENT_URL to choose what to upload", file=sys.stderr)
     sys.exit(1)

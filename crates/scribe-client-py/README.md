@@ -67,12 +67,14 @@ With any other redirect URI, the browser ends up on a page that fails to load af
 ## Documents
 
 ```python
-# From a local file...
+# From a file on disk, read as it's uploaded...
+document_id = client.create_document_from_path("report.docx")
+# ...from bytes you already have in memory...
 document_id = client.create_document_from_file("report.docx", data)
 # ...or have the server fetch it from a URL.
 document_id = client.create_document_from_url("https://example.com/report.pdf")
-# Both take an optional password, for a file you already know is protected.
-document_id = client.create_document_from_file("locked.pdf", data, "hunter2")
+# Each takes an optional password, for a file you already know is protected.
+document_id = client.create_document_from_path("locked.pdf", "hunter2")
 ```
 
 Creating a document automatically starts an `html_stream` conversion (a fast preview), so the caller has something to show immediately even if the account is out of page credits for a full conversion.

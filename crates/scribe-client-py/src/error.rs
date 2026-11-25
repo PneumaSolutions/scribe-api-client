@@ -40,6 +40,7 @@ pub(crate) fn to_py_err(err: ScribeError) -> PyErr {
             purchase_url,
         } => NeedsPurchaseError::new_err(format!("{message} ({purchase_url})")),
         ScribeError::PasswordRequired { message } => PasswordRequiredError::new_err(message),
+        ScribeError::File(error) => error.into(),
         other => ScribeApiError::new_err(other.to_string()),
     }
 }

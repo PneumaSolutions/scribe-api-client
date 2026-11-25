@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use pyo3::{
     prelude::*,
@@ -65,6 +65,24 @@ impl PyScribeClient {
             file_name: file_name.to_string(),
             bytes: bytes.to_vec(),
         };
+        py.detach(|| runtime().block_on(self.inner.create_document(source, password)))
+            .map(|doc| doc.document_id)
+            .map_err(to_py_err)
+    }
+
+    /// Creates a document by uploading the file at `path`, a `str` or
+    /// `pathlib.Path`, under its own name. The file is read as it's sent, so
+    /// even a large one never sits in memory whole. Returns the new
+    /// document's id. Raises `OSError`, such as `FileNotFoundError`, when the
+    /// file can't be read.
+    #[pyo3(signature = (path, password=None))]
+    fn create_document_from_path(
+        &self,
+        py: Python<'_>,
+        path: PathBuf,
+        password: Option<&str>,
+    ) -> PyResult<String> {
+        let source = DocumentSource::Path(path);
         py.detach(|| runtime().block_on(self.inner.create_document(source, password)))
             .map(|doc| doc.document_id)
             .map_err(to_py_err)

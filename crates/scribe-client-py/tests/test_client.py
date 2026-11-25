@@ -26,6 +26,28 @@ def test_create_document_from_file_returns_document_id(mock_server):
     assert b"report.docx" in request["body"]
 
 
+def test_create_document_from_path_uploads_the_file_under_its_name(mock_server, tmp_path):
+    mock_server.add_json_route(
+        "POST", "/api/documents", 200, {"document_id": "doc-1"}
+    )
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    path = tmp_path / "report.pdf"
+    path.write_bytes(b"%PDF streamed from disk")
+    document_id = client.create_document_from_path(path, "hunter2")
+    assert document_id == "doc-1"
+    [request] = mock_server.recorded_requests
+    assert b"report.pdf" in request["body"]
+    assert b"streamed from disk" in request["body"]
+    assert b"hunter2" in request["body"]
+
+
+def test_create_document_from_a_missing_path_raises_file_not_found(mock_server, tmp_path):
+    client = ScribeClient(mock_server.base_url, "test-client-id", valid_tokens())
+    with pytest.raises(FileNotFoundError):
+        client.create_document_from_path(tmp_path / "missing.pdf")
+    assert mock_server.recorded_requests == []
+
+
 def test_create_document_from_url_returns_document_id(mock_server):
     mock_server.add_json_route(
         "POST", "/api/documents", 200, {"document_id": "doc-2"}
