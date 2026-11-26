@@ -19,6 +19,10 @@ default = ["rustls"]
 # TLS by rustls, with no system library to link against: what the wheels on
 # PyPI are built with, and the simplest choice for anyone else.
 rustls = ["reqwest/rustls", "tokio-tungstenite/rustls-tls-native-roots"]
+# rustls without a crypto provider of its own, for an app that already uses
+# one, such as ring: it installs it with `CryptoProvider::install_default`
+# before making a client.
+rustls-no-provider = ["reqwest/rustls-no-provider", "tokio-tungstenite/rustls-tls-native-roots"]
 # TLS by the platform's own library (Security.framework on Apple, SChannel on
 # Windows, OpenSSL elsewhere).
 native-tls = ["reqwest/native-tls", "tokio-tungstenite/native-tls"]
